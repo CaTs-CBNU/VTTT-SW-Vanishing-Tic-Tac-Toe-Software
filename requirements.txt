@@ -1,0 +1,12 @@
+# Core scientific computing
+numpy>=1.21.0
+
+# Deep Learning framework (CPU/GPU)
+torch>=2.0.0
+torchvision
+tensorboard>=2.10.0
+
+# Utilities
+argparse
+dataclasses; python_version < "3.7"
+typing-extensions; python_version < "3.8"
