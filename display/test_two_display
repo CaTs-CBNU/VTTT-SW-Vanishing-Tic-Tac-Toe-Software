@@ -1,0 +1,55 @@
+import time
+from PIL import Image
+
+import board
+import digitalio
+from adafruit_rgb_display import st7789
+
+# RES 강제 리셋
+reset_pin = digitalio.DigitalInOut(board.D27)
+reset_pin.direction = digitalio.Direction.OUTPUT
+reset_pin.value = True
+time.sleep(0.1)
+reset_pin.value = False
+time.sleep(0.2)
+reset_pin.value = True
+time.sleep(0.2)
+
+spi = board.SPI()
+
+cs1_pin = digitalio.DigitalInOut(board.D8)      # 물리 24번 GPIO8
+cs2_pin = digitalio.DigitalInOut(board.D7)      # 물리 26번 GPIO7
+dc_pin = digitalio.DigitalInOut(board.D25)     # 물리 22번 GPIO25
+reset_pin = digitalio.DigitalInOut(board.D27)  # 물리 13번 GPIO27
+
+disp1 = st7789.ST7789(
+spi,
+cs=cs1_pin,
+dc=dc_pin,
+rst=reset_pin,
+width=240,
+height=240,
+rotation=0,
+baudrate=1000000,
+y_offset=80,
+)
+
+disp2 = st7789.ST7789(
+spi,
+cs=cs2_pin,
+dc=dc_pin,
+rst=reset_pin,
+width=240,
+height=240,
+rotation=0,
+baudrate=4000000,
+y_offset=350,
+)
+
+image1 = Image.new("RGB", (240, 240), (255, 0, 0))
+image2 = Image.new("RGB", (240, 240), (0, 0, 255))
+
+disp1.image(image1)
+time.sleep(1)
+disp2.image(image2)
+time.sleep(1)
