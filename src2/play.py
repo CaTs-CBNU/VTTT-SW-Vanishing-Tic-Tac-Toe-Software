@@ -119,3 +119,41 @@ def play():
     done = False
     
     print_board(env)
+    
+    while not done:
+        valid_actions = env.get_valid_actions()
+        
+        # 인간의 턴
+        if env.current_player == human_player:
+            action = -1
+            while action not in valid_actions:
+                try:
+                    action = int(input(f"어디에 두시겠습니까? (가능한 칸: {valid_actions}): "))
+                    if action not in valid_actions:
+                        print("잘못된 입력이거나 이미 돌이 있는 칸입니다. 다시 입력하세요.")
+                except ValueError:
+                    print("숫자를 입력해주세요.")
+            
+            state, reward, done = env.step(action)
+        
+        # AI의 턴
+        else:
+            print("AI가 3수 앞을 내다보며 생각 중입니다...")
+            # depth=3 이면: 나의 수 -> 상대의 대응 -> 나의 다음 수 까지 시뮬레이션
+            action = get_best_action(env, model, valid_actions, depth=3)
+            print(f"AI가 {action}번 칸을 선택했습니다.")
+            
+            state, reward, done = env.step(action)
+
+        print_board(env)
+
+    if reward > 0:
+        if env.current_player == human_player:
+            print("🎉 축하합니다! 당신의 승리입니다!")
+        else:
+            print("💀 AI의 승리입니다! (수읽기에 당하셨군요)")
+    else:
+        print("게임 종료!")
+
+if __name__ == "__main__":
+    play()
