@@ -3,7 +3,7 @@ import board
 import digitalio
 from adafruit_rgb_display import st7789
 
-from pin import LCD_CS_PINS, DC_PIN, RESET_PIN
+from .pin import LCD_CS_PINS, DC_PIN, RESET_PIN
 
 class DisplayManager:
     def __init__(self):

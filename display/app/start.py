@@ -1,8 +1,8 @@
 import RPi.GPIO as GPIO
 from pathlib import Path
 import time
-from pin import BUTTON_PINS
-from utils import load_images
+from .pin import BUTTON_PINS
+from .utils import load_images
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 IMAGE_ROOT = PROJECT_ROOT / "src" / "static" / "images"
