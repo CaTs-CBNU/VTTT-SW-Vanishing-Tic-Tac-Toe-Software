@@ -207,17 +207,6 @@ environment:
 7.  **Merge**: 리뷰 승인(Approve) 후, PR을 `develop` 브랜치에 Merge  (`Squash and Merge` 권장)
 8.  **브랜치 삭제**: Merge가 완료된 `feature` 브랜치는 삭제
 
-### 5.3. 커밋 메시지 규칙 (Commit Message Convention)
-
-- **형식**: `타입(스코프): 제목`
-- **타입**: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`
-- **스코프(Scope)**: `text-emotion`, `audio-emotion`, `trainer`, `model` 등 작업 영역을 명시
-- **예시**:
-  - `feat(model-vttt): DQN 기반 배니싱 틱택토 모델 구현`
-  - `fix(game-logic): 말 사라짐 타이밍 버그 수정`
-  - `feat(display-control): 3x3 디스플레이 동기화 구현`
-  - `refactor(trainer): RL 학습 루프 구조 개선`
-
 ## 6. 모델 실행 관련
 
 ### 6.1 의존성 설치
