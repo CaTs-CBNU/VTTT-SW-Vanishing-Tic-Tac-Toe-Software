@@ -57,4 +57,13 @@ class DisplayManager:
     def disable_all_cs(self):
         for cs_pin in self.cs_pins.values():
             cs_pin.value = True
+            
+    def show_image(self, lcd_num, image):
+        self.disable_all_cs()
+        time.sleep(0.01)
+
+        self.displays[lcd_num].image(image)
+
+        self.disable_all_cs()
+        time.sleep(0.01)
 
