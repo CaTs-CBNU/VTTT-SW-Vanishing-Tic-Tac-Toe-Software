@@ -1191,7 +1191,7 @@ def parse_args():
 
     # train
     train_p = subparsers.add_parser("train")
-    train_p.add_argument("--output_dir", type=str, default="./vanish_runs")
+    train_p.add_argument("--output_dir", type=str, default="./results/saved_models/vanish_runs")
     train_p.add_argument("--episodes", type=int, default=30000)
     train_p.add_argument("--batch_size", type=int, default=128)
     train_p.add_argument("--buffer_size", type=int, default=50000)
