@@ -6,4 +6,4 @@ from pin import BUTTON_PINS
 from utils import load_images
 
 MENU_IMAGE_DIR = Path("./static/images/menu")
-MENU_BUTTONS = [1, 4, 5, 6, 8]
+MENU_BUTTONS = [2, 4, 5, 6, 8]
