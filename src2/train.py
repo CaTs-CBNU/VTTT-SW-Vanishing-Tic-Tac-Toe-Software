@@ -140,3 +140,34 @@ def train():
                 optimizer.step()
                 
                 recent_losses.append(loss.item())
+        
+        recent_rewards.append(episode_reward)
+        if reward > 0: 
+            if env.current_player == 1: p1_wins += 1
+            else: p2_wins += 1
+        elif reward <= -10: # 반칙
+            invalid_moves += 1
+
+        epsilon = max(epsilon_min, epsilon * epsilon_decay)
+        
+        if episode % TARGET_UPDATE == 0:
+            target_net.load_state_dict(policy_net.state_dict())
+
+        if episode % PRINT_INTERVAL == 0:
+            avg_loss = np.mean(recent_losses) if recent_losses else 0.0
+            avg_reward = np.mean(recent_rewards) if recent_rewards else 0.0
+            p1_win_rate = (p1_wins / PRINT_INTERVAL) * 100
+            p2_win_rate = (p2_wins / PRINT_INTERVAL) * 100
+            invalid_rate = (invalid_moves / PRINT_INTERVAL) * 100
+            
+            print(f"[{episode}/{NUM_EPISODES}] Eps: {epsilon:.3f} | Loss: {avg_loss:.4f} | Avg Reward: {avg_reward:.2f}")
+            print(f" └─ P1 Win: {p1_win_rate:.1f}% | P2 Win: {p2_win_rate:.1f}% | Invalid: {invalid_rate:.1f}%")
+            
+            with open(csv_filename, mode='a', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow([episode, round(epsilon, 3), round(avg_loss, 4), round(avg_reward, 2), 
+                                 round(p1_win_rate, 1), round(p2_win_rate, 1), round(invalid_rate, 1)])
+            
+            recent_losses.clear()
+            recent_rewards.clear()
+            p1_wins, p2_wins, invalid_moves = 0, 0, 0
