@@ -79,3 +79,13 @@ class DisplayManager:
 
         self.dc_pin.deinit()
 
+def load_images(image_path, page):
+    images = {}
+
+    for lcd_num in range(1, 10):
+        path = image_path / f"{page}{lcd_num}.png"
+        image = Image.open(path).convert("RGB")
+        image = image.resize((240, 240))
+
+        images[lcd_num] = image
+    return images
