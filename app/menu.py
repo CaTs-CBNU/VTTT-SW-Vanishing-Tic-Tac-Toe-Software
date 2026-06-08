@@ -5,4 +5,5 @@ import time
 from pin import BUTTON_PINS
 from utils import load_images
 
-# 코드 추가해주세요
+MENU_IMAGE_DIR = Path("./static/images/menu")
+MENU_BUTTONS = [1, 4, 5, 6, 8]
