@@ -53,4 +53,8 @@ class DisplayManager:
         time.sleep(0.3)
 
         reset_pin.deinit()
+        
+    def disable_all_cs(self):
+        for cs_pin in self.cs_pins.values():
+            cs_pin.value = True
 
