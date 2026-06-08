@@ -6,7 +6,7 @@ from utils import load_images
 
 START_IMAGE_DIR = Path("./static/images/start")
 
-def show_page(display_manager):
+def show_start_page(display_manager):
     start_images = load_images(START_IMAGE_DIR, "start")
 
     for lcd_num in range(0, 9):
