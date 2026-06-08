@@ -30,7 +30,7 @@ def wait_menu_button():
     while True:
         for button_num in MENU_BUTTONS:
             pin = BUTTON_PINS[button_num]
-            current_state = GPIO.input
+            current_state = GPIO.input(pin)
 
             if prev_states[button_num] == GPIO.LOW and current_state == GPIO.HIGH:
                 print(f"{button_num} button pressed.")
