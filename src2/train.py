@@ -57,3 +57,23 @@ def train():
 
     recent_losses, recent_rewards = [], []
     p1_wins, p2_wins, invalid_moves = 0, 0, 0
+    
+    for episode in range(1, NUM_EPISODES + 1):
+        if episode % 2000 == 0:
+            historical_models.append(copy.deepcopy(policy_net.state_dict()))
+            if len(historical_models) > 20: 
+                historical_models.pop(0)
+
+        if len(historical_models) > 0 and random.random() < 0.5:
+            past_net.load_state_dict(random.choice(historical_models))
+            past_net.eval()
+            if random.random() < 0.5:
+                p1_model, p2_model = policy_net, past_net
+            else:
+                p1_model, p2_model = past_net, policy_net
+        else:
+            p1_model, p2_model = policy_net, policy_net
+
+        state = env.reset()
+        done = False
+        episode_reward = 0.0
