@@ -97,3 +97,25 @@ def get_best_action(env, model, valid_actions, depth=7): # 👈 여기서 깊이
         alpha = max(alpha, best_score)
 
     return best_action    
+
+def play():
+    env = VanishingTicTacToeEnv()
+    model = DQN()
+    
+    # 학습된 5만 번짜리 최종 모델 불러오기
+    try:
+        model.load_state_dict(torch.load("vanishing_ttt_model_final.pth"))
+        print("모델을 성공적으로 불러왔습니다!")
+    except FileNotFoundError:
+        print("모델 파일을 찾을 수 없습니다.")
+        return
+        
+    model.eval()
+    
+    user_turn = input("선공(O)을 하시겠습니까? (y/n): ").strip().lower()
+    human_player = 1 if user_turn == 'y' else -1
+    
+    state = env.reset()
+    done = False
+    
+    print_board(env)
