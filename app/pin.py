@@ -29,3 +29,6 @@ LCD_CS_PINS = {
     8: board.D23,   # GPIO23, Pin 16
     9: board.D24,   # GPIO24, Pin 18
 }
+
+DC_PIN = board.D25       # GPIO25, Pin 22
+RESET_PIN = board.D27    # GPIO27, Pin 13
