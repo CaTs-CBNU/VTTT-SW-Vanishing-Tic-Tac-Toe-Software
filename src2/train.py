@@ -103,3 +103,40 @@ def train():
                 action = int(np.argmax(masked_q_values))
 
             next_state, reward, done = env.step(action)
+            
+            # ========================================== #
+            # 💡 무한 루프 강제 종료 및 무승부 페널티 로직
+            # ========================================== #
+            if not done and step_count >= MAX_STEPS:
+                done = True
+                reward = -0.5 # 무승부(질질 끈 것에 대한) 페널티 부여
+
+            episode_reward += reward
+            
+            memory.push(state, action, reward, next_state, done)
+            state = next_state
+
+            if len(memory) > BATCH_SIZE:
+                s, a, r, s_prime, d = memory.sample(BATCH_SIZE)
+                
+                s = torch.FloatTensor(s).to(device)
+                a = torch.LongTensor(a).unsqueeze(1).to(device)
+                r = torch.FloatTensor(r).unsqueeze(1).to(device)
+                s_prime = torch.FloatTensor(s_prime).to(device)
+                d = torch.FloatTensor(d).unsqueeze(1).to(device)
+
+                # 현재 상태 Q값
+                q_vals = policy_net(s).gather(1, a)
+                
+                # Double DQN (DDQN) 로직
+                with torch.no_grad():
+                    next_actions = policy_net(s_prime).argmax(1).unsqueeze(1)
+                    next_q_values = target_net(s_prime).gather(1, next_actions)
+                    target_q = r + (GAMMA * (-next_q_values) * (1 - d))
+
+                loss = F.mse_loss(q_vals, target_q)
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+                
+                recent_losses.append(loss.item())
