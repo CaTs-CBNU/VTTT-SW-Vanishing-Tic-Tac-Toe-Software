@@ -77,3 +77,29 @@ def train():
         state = env.reset()
         done = False
         episode_reward = 0.0
+        
+        # ========================================== #
+        # 💡 무한 루프 방지용 변수 초기화
+        # ========================================== #
+        step_count = 0  
+        MAX_STEPS = 50  
+
+        while not done:
+            step_count += 1 # 턴 수 증가
+            
+            valid_actions = env.get_valid_actions()
+            current_model = p1_model if env.current_player == 1 else p2_model
+            current_eps = epsilon if current_model == policy_net else 0.05
+            
+            if random.random() < current_eps:
+                action = random.choice(valid_actions)
+            else:
+                state_tensor = torch.FloatTensor(state).unsqueeze(0).to(device)
+                with torch.no_grad():
+                    q_values = current_model(state_tensor).squeeze(0).cpu().numpy()
+                masked_q_values = np.full(9, -np.inf)
+                for a in valid_actions:
+                    masked_q_values[a] = q_values[a]
+                action = int(np.argmax(masked_q_values))
+
+            next_state, reward, done = env.step(action)
