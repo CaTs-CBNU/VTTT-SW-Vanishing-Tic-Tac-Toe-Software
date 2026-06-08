@@ -14,3 +14,15 @@ def show_page(display_manager):
             lcd_num,
             start_images[lcd_num]
         )
+
+def wait_start_button():
+    start_button_pin = BUTTON_PINS[8]
+    print(f"waiting for 8th button... GPIO{start_button_pin}")
+    prev_state = GPIO.input(start_button_pin)
+      
+    while True:
+        current_state = GPIO.input(start_button_pin)
+
+        if prev_state == GPIO.LOW and current_state == GPIO.HIGH:
+            print("start button pressed")
+            break
