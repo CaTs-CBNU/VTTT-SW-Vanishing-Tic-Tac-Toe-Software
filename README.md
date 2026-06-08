@@ -31,7 +31,9 @@
 │   ├── models/              # 모델 아키텍처 정의 (예: lstm_model.py, transformer_model.py)
 │   ├── trainer.py           # 모델 학습 및 평가 로직
 │   ├── predict.py           # 학습된 모델로 추론을 수행하는 스크립트
-│   └── utils.py             # 공통으로 사용되는 헬퍼 함수
+│   ├── utils.py             # 공통으로 사용되는 헬퍼 함수
+│   └── static/
+│       └── images/          # 프로젝트에 사용되는 이미지들
 ├── configs/                 # 실험별 설정 파일 (YAML, JSON 형식)
 ├── scripts/                 # 실험 실행을 위한 쉘 스크립트
 └── results/
