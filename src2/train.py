@@ -20,3 +20,16 @@ class ReplayBuffer:
         return np.array(states), np.array(actions), np.array(rewards), np.array(next_states), np.array(dones)
     def __len__(self):
         return len(self.buffer)
+    
+def train():
+    BATCH_SIZE = 128
+    GAMMA = 0.99
+    LR = 1e-4
+    NUM_EPISODES = 50000
+    TARGET_UPDATE = 500
+    PRINT_INTERVAL = 500
+    CHECKPOINT_INTERVAL = 10000
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"🔥 DDQN 기반 새로운 학습 시작! (사용 장치: {device.type.upper()}) 🔥")
+    
