@@ -53,4 +53,20 @@ def minimax(env, model, depth, alpha, beta, is_maximizing):
                 break # 더 탐색할 필요 없음 (Cut-off)
         return max_eval
     
-    
+    # 3. 상대방 턴 (나에게 최악의 상황 탐색)
+    else:
+        min_eval = float('inf')
+        for action in valid_actions:
+            sim_env = copy.deepcopy(env)
+            _, reward, done = sim_env.step(action)
+            
+            if done and reward > 0: return -1000 # 필패 수
+            
+            eval_score = minimax(sim_env, model, depth - 1, alpha, beta, True)
+            min_eval = min(min_eval, eval_score)
+            
+            # 가지치기 로직
+            beta = min(beta, eval_score)
+            if beta <= alpha:
+                break # 더 탐색할 필요 없음 (Cut-off)
+        return min_eval
