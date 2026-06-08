@@ -66,4 +66,8 @@ class DisplayManager:
 
         self.disable_all_cs()
         time.sleep(0.01)
+        
+    def show_all(self, image):
+        for lcd_num in self.displays.keys():
+            self.show_image(lcd_num, image)
 
