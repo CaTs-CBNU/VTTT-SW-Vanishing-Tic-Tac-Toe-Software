@@ -31,5 +31,5 @@ def wait_start_button():
         time.sleep(0.03)
 
 def start_page(display_manager):
-    show_page(display_manager)
+    show_start_page(display_manager)
     wait_start_button()
