@@ -37,3 +37,5 @@ def wait_menu_button():
                 return button_num
             
             prev_states[button_num] = current_state
+        
+        time.sleep(0.03)
