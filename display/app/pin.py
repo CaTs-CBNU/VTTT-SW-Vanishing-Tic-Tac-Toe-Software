@@ -1,5 +1,4 @@
 import time
-from PIL import Image
 
 import RPi.GPIO as GPIO
 import board

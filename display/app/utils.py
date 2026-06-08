@@ -2,6 +2,7 @@ import time
 import board
 import digitalio
 from adafruit_rgb_display import st7789
+from PIL import Image
 
 from .pin import LCD_CS_PINS, DC_PIN, RESET_PIN
 
