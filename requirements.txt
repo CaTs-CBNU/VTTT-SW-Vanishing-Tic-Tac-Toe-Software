@@ -10,3 +10,7 @@ tensorboard>=2.10.0
 argparse
 dataclasses; python_version < "3.7"
 typing-extensions; python_version < "3.8"
+
+# Display libraries for Raspberry Pi
+adafruit-circuitpython-rgb-display>=3.14.0
+adafruit-blinka>=8.0.0
