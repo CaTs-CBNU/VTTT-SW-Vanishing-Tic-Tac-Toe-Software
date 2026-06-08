@@ -5,7 +5,11 @@ import time
 from pin import BUTTON_PINS
 from utils import load_images
 
-MENU_IMAGE_DIR = Path("./static/images/menu")
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+IMAGE_ROOT = PROJECT_ROOT / "src" / "static" / "images"
+
+MENU_IMAGE_DIR = IMAGE_ROOT / "menu"
+
 MENU_BUTTONS = [2, 4, 5, 6, 8]
 
 def show_start_page(display_manager):
