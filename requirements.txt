@@ -14,3 +14,5 @@ typing-extensions; python_version < "3.8"
 # Display libraries for Raspberry Pi
 adafruit-circuitpython-rgb-display>=3.14.0
 adafruit-blinka>=8.0.0
+RPi.GPIO>=0.7.1
+Pillow>=10.0.0
