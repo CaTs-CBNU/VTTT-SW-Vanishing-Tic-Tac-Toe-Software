@@ -13,6 +13,7 @@ def show_start_page(display_manager):
 
     for lcd_num in range(1, 10):
         display_manager.show_image(
+            lcd_num,
             images[lcd_num]
         )
         
