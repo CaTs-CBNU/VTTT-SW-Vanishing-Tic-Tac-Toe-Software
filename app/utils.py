@@ -70,4 +70,12 @@ class DisplayManager:
     def show_all(self, image):
         for lcd_num in self.displays.keys():
             self.show_image(lcd_num, image)
+            
+    def cleanup(self):
+        self.disable_all_cs()
+
+        for cs_pin in self.cs_pins.values():
+            cs_pin.deinit()
+
+        self.dc_pin.deinit()
 
