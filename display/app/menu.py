@@ -12,7 +12,7 @@ MENU_IMAGE_DIR = IMAGE_ROOT / "menu"
 
 MENU_BUTTONS = [2, 4, 5, 6, 8]
 
-def show_start_page(display_manager):
+def show_menu_page(display_manager):
     images = load_images(MENU_IMAGE_DIR, "menu")
 
     for lcd_num in range(1, 10):
@@ -43,3 +43,8 @@ def wait_menu_button():
             prev_states[button_num] = current_state
         
         time.sleep(0.03)
+
+def menu_page(display_manager):
+    show_menu_page(display_manager)
+    selected_button = wait_menu_button()
+    return selected_button
