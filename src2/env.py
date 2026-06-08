@@ -53,3 +53,10 @@ class VanishingTicTacToeEnv:
             self.current_player *= -1
         return self.get_observation(), reward, self.done
     
+    def check_win(self, player):
+        b = (self.board == player)
+        for i in range(self.board_size):
+            if np.all(b[i, :]) or np.all(b[:, i]): return True
+        if b[0, 0] and b[1, 1] and b[2, 2]: return True
+        if b[0, 2] and b[1, 1] and b[2, 0]: return True
+        return False
