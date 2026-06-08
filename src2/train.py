@@ -49,3 +49,11 @@ def train():
     epsilon = 1.0
     epsilon_decay = 0.9999 
     epsilon_min = 0.1
+    
+    csv_filename = "training_log_ddqn.csv"
+    with open(csv_filename, mode='w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(['Episode', 'Epsilon', 'Loss', 'Avg_Reward', 'P1_Win_Rate', 'P2_Win_Rate', 'Invalid_Rate'])
+
+    recent_losses, recent_rewards = [], []
+    p1_wins, p2_wins, invalid_moves = 0, 0, 0
