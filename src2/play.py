@@ -70,3 +70,30 @@ def minimax(env, model, depth, alpha, beta, is_maximizing):
             if beta <= alpha:
                 break # 더 탐색할 필요 없음 (Cut-off)
         return min_eval
+    
+# ========================================== #
+# 💡 AI 최종 선택 (Depth 조절 가능)
+# ========================================== #
+def get_best_action(env, model, valid_actions, depth=7): # 👈 여기서 깊이를 5나 7로 조절하세요!
+    best_action = valid_actions[0]
+    best_score = -float('inf')
+    
+    alpha = -float('inf')
+    beta = float('inf')
+
+    for action in valid_actions:
+        sim_env = copy.deepcopy(env)
+        _, reward, done = sim_env.step(action)
+
+        if done and reward > 0:
+            return action
+
+        score = minimax(sim_env, model, depth - 1, alpha, beta, False)
+
+        if score > best_score:
+            best_score = score
+            best_action = action
+            
+        alpha = max(alpha, best_score)
+
+    return best_action    
