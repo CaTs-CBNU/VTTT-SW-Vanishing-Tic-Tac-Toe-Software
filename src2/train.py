@@ -171,3 +171,15 @@ def train():
             recent_losses.clear()
             recent_rewards.clear()
             p1_wins, p2_wins, invalid_moves = 0, 0, 0
+        
+        if episode % CHECKPOINT_INTERVAL == 0:
+            checkpoint_name = f"ddqn_vanishing_ttt_{episode}.pth"
+            torch.save(policy_net.state_dict(), checkpoint_name)
+            print(f"💾 [체크포인트] {episode} 에피소드 DDQN 모델 저장 완료: {checkpoint_name}")
+
+    print("학습 완료! 최종 DDQN 모델을 저장합니다...")
+    torch.save(policy_net.state_dict(), "ddqn_vanishing_ttt_final.pth")
+    print("저장 완료: ddqn_vanishing_ttt_final.pth")
+
+if __name__ == "__main__":
+    train()
