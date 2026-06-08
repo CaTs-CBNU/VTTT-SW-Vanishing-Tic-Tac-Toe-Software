@@ -33,3 +33,19 @@ def train():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"🔥 DDQN 기반 새로운 학습 시작! (사용 장치: {device.type.upper()}) 🔥")
     
+    env = VanishingTicTacToeEnv()
+    
+    policy_net = DQN().to(device)
+    target_net = DQN().to(device)
+    target_net.load_state_dict(policy_net.state_dict())
+    target_net.eval()
+    
+    past_net = DQN().to(device)
+    historical_models = []
+    
+    optimizer = optim.Adam(policy_net.parameters(), lr=LR)
+    memory = ReplayBuffer(capacity=50000)
+    
+    epsilon = 1.0
+    epsilon_decay = 0.9999 
+    epsilon_min = 0.1
