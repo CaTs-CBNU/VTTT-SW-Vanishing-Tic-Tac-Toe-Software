@@ -29,3 +29,7 @@ def wait_start_button():
         
         prev_state = current_state
         time.sleep(0.03)
+
+def start_page(display_manager):
+    show_page(display_manager)
+    wait_start_button()
