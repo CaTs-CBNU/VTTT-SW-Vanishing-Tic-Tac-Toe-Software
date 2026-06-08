@@ -38,3 +38,19 @@ class DisplayManager:
 
             self.disable_all_cs()
             time.sleep(0.05)
+            
+    def reset_all_displays(self):
+        reset_pin = digitalio.DigitalInOut(RESET_PIN)
+        reset_pin.direction = digitalio.Direction.OUTPUT
+
+        reset_pin.value = True
+        time.sleep(0.1)
+
+        reset_pin.value = False
+        time.sleep(0.2)
+
+        reset_pin.value = True
+        time.sleep(0.3)
+
+        reset_pin.deinit()
+
