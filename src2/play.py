@@ -34,3 +34,23 @@ def minimax(env, model, depth, alpha, beta, is_maximizing):
             q_values = model(state_tensor).squeeze(0).numpy()
         max_q = max([q_values[a] for a in valid_actions])
         return max_q if is_maximizing else -max_q
+
+    # 2. 내 턴 (최대 이익 탐색)
+    if is_maximizing:
+        max_eval = -float('inf')
+        for action in valid_actions:
+            sim_env = copy.deepcopy(env)
+            _, reward, done = sim_env.step(action)
+            
+            if done and reward > 0: return 1000 # 필승 수
+            
+            eval_score = minimax(sim_env, model, depth - 1, alpha, beta, False)
+            max_eval = max(max_eval, eval_score)
+            
+            # 가지치기 로직
+            alpha = max(alpha, eval_score)
+            if beta <= alpha:
+                break # 더 탐색할 필요 없음 (Cut-off)
+        return max_eval
+    
+    
