@@ -26,3 +26,6 @@ def wait_start_button():
         if prev_state == GPIO.LOW and current_state == GPIO.HIGH:
             print("start button pressed")
             break
+        
+        prev_state = current_state
+        time.sleep(0.03)
