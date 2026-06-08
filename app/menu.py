@@ -15,3 +15,13 @@ def show_start_page(display_manager):
         display_manager.show_image(
             images[lcd_num]
         )
+        
+def wait_menu_button():
+
+    prev_states = {}
+
+    for button_num in MENU_BUTTONS:
+        pin = BUTTON_PINS[button_num]
+        prev_states[button_num] = GPIO.input(pin)
+    
+    print("waiting for menu I/O")
