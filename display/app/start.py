@@ -4,7 +4,10 @@ import time
 from pin import BUTTON_PINS
 from utils import load_images
 
-START_IMAGE_DIR = Path("./static/images/start")
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+IMAGE_ROOT = PROJECT_ROOT / "src" / "static" / "images"
+
+START_IMAGE_DIR = IMAGE_ROOT / "start"
 
 def show_start_page(display_manager):
     start_images = load_images(START_IMAGE_DIR, "start")
