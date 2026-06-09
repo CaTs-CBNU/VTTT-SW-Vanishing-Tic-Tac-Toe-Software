@@ -21,13 +21,34 @@ def print_board(env):
         if r < 2: board_str += "\n---+---+---\n"
     print(board_str)
     print("\n" + "="*20)
+
 # ========================================== #
-# 💡 알파-베타 가지치기가 적용된 미니맥스
+# 💡 이슈 반영: 하드코딩된 규칙 (즉시 승리 또는 방어)
+# ========================================== #
+def check_immediate_win_or_block(env, valid_actions):
+    # 1. 내가 즉시 승리할 수 있는 칸 탐색
+    for action in valid_actions:
+        sim_env = copy.deepcopy(env)
+        _, reward, done = sim_env.step(action)
+        if done and reward > 0:
+            return action
+
+    # 2. 상대방이 즉시 승리할 수 있는 칸 차단 탐색
+    for action in valid_actions:
+        sim_env = copy.deepcopy(env)
+        sim_env.current_player *= -1 # 상대방의 턴으로 가정
+        _, reward, done = sim_env.step(action)
+        if done and reward > 0:
+            return action # 상대가 이기는 자리라면 내가 둔다
+
+    return None
+
+# ========================================== #
+# 알파-베타 가지치기가 적용된 미니맥스
 # ========================================== #
 def minimax(env, model, depth, alpha, beta, is_maximizing):
     valid_actions = env.get_valid_actions()
 
-    # 1. 탐색 깊이 제한 도달 시 DQN 평가
     if depth == 0:
         state_tensor = torch.FloatTensor(env.get_observation()).unsqueeze(0)
         with torch.no_grad():
@@ -35,46 +56,47 @@ def minimax(env, model, depth, alpha, beta, is_maximizing):
         max_q = max([q_values[a] for a in valid_actions])
         return max_q if is_maximizing else -max_q
 
-    # 2. 내 턴 (최대 이익 탐색)
     if is_maximizing:
         max_eval = -float('inf')
         for action in valid_actions:
             sim_env = copy.deepcopy(env)
             _, reward, done = sim_env.step(action)
             
-            if done and reward > 0: return 1000 # 필승 수
+            if done and reward > 0: return 1000 
             
             eval_score = minimax(sim_env, model, depth - 1, alpha, beta, False)
             max_eval = max(max_eval, eval_score)
             
-            # 가지치기 로직
             alpha = max(alpha, eval_score)
             if beta <= alpha:
-                break # 더 탐색할 필요 없음 (Cut-off)
+                break
         return max_eval
     
-    # 3. 상대방 턴 (나에게 최악의 상황 탐색)
     else:
         min_eval = float('inf')
         for action in valid_actions:
             sim_env = copy.deepcopy(env)
             _, reward, done = sim_env.step(action)
             
-            if done and reward > 0: return -1000 # 필패 수
+            if done and reward > 0: return -1000
             
             eval_score = minimax(sim_env, model, depth - 1, alpha, beta, True)
             min_eval = min(min_eval, eval_score)
             
-            # 가지치기 로직
             beta = min(beta, eval_score)
             if beta <= alpha:
-                break # 더 탐색할 필요 없음 (Cut-off)
+                break 
         return min_eval
     
 # ========================================== #
-# 💡 AI 최종 선택 (Depth 조절 가능)
+# AI 최종 선택 
 # ========================================== #
-def get_best_action(env, model, valid_actions, depth=7): # 👈 여기서 깊이를 5나 7로 조절하세요!
+def get_best_action(env, model, valid_actions, depth=7):
+    # 💡 이슈 반영: 도메인 지식 기반의 휴리스틱 로직을 최우선으로 검사
+    heuristic_action = check_immediate_win_or_block(env, valid_actions)
+    if heuristic_action is not None:
+        return heuristic_action
+
     best_action = valid_actions[0]
     best_score = -float('inf')
     
@@ -102,7 +124,6 @@ def play():
     env = VanishingTicTacToeEnv()
     model = DQN()
     
-    # 학습된 5만 번짜리 최종 모델 불러오기
     try:
         model.load_state_dict(torch.load("vanishing_ttt_model_final.pth"))
         print("모델을 성공적으로 불러왔습니다!")
@@ -123,7 +144,6 @@ def play():
     while not done:
         valid_actions = env.get_valid_actions()
         
-        # 인간의 턴
         if env.current_player == human_player:
             action = -1
             while action not in valid_actions:
@@ -136,10 +156,8 @@ def play():
             
             state, reward, done = env.step(action)
         
-        # AI의 턴
         else:
             print("AI가 3수 앞을 내다보며 생각 중입니다...")
-            # depth=3 이면: 나의 수 -> 상대의 대응 -> 나의 다음 수 까지 시뮬레이션
             action = get_best_action(env, model, valid_actions, depth=3)
             print(f"AI가 {action}번 칸을 선택했습니다.")
             
@@ -153,7 +171,7 @@ def play():
         else:
             print("💀 AI의 승리입니다! (수읽기에 당하셨군요)")
     else:
-        print("게임 종료!")
+        print("게임 종료! (무승부 또는 턴 초과)")
 
 if __name__ == "__main__":
     play()
