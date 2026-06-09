@@ -20,6 +20,27 @@ class ReplayBuffer:
         return np.array(states), np.array(actions), np.array(rewards), np.array(next_states), np.array(dones)
     def __len__(self):
         return len(self.buffer)
+
+# 💡 이슈 반영: 8방향 대칭(회전 및 반전) 데이터 증강 함수
+def get_symmetries(state, action, next_state):
+    symmetries = []
+    action_mat = np.zeros((3, 3), dtype=int)
+    action_mat[action // 3, action % 3] = 1
+
+    for k in range(4):
+        # 90도씩 회전
+        s_rot = np.rot90(state, k=k, axes=(1, 2))
+        sp_rot = np.rot90(next_state, k=k, axes=(1, 2))
+        a_rot_mat = np.rot90(action_mat, k=k)
+        symmetries.append((s_rot.copy(), int(np.argmax(a_rot_mat)), sp_rot.copy()))
+
+        # 좌우 반전
+        s_flip = np.flip(s_rot, axis=2)
+        sp_flip = np.flip(sp_rot, axis=2)
+        a_flip_mat = np.flip(a_rot_mat, axis=1)
+        symmetries.append((s_flip.copy(), int(np.argmax(a_flip_mat)), sp_flip.copy()))
+
+    return symmetries
     
 def train():
     BATCH_SIZE = 128
@@ -78,15 +99,7 @@ def train():
         done = False
         episode_reward = 0.0
         
-        # ========================================== #
-        # 💡 무한 루프 방지용 변수 초기화
-        # ========================================== #
-        step_count = 0  
-        MAX_STEPS = 50  
-
         while not done:
-            step_count += 1 # 턴 수 증가
-            
             valid_actions = env.get_valid_actions()
             current_model = p1_model if env.current_player == 1 else p2_model
             current_eps = epsilon if current_model == policy_net else 0.05
@@ -103,17 +116,12 @@ def train():
                 action = int(np.argmax(masked_q_values))
 
             next_state, reward, done = env.step(action)
-            
-            # ========================================== #
-            # 💡 무한 루프 강제 종료 및 무승부 페널티 로직
-            # ========================================== #
-            if not done and step_count >= MAX_STEPS:
-                done = True
-                reward = -0.5 # 무승부(질질 끈 것에 대한) 페널티 부여
-
             episode_reward += reward
             
-            memory.push(state, action, reward, next_state, done)
+            # 💡 이슈 반영: 1턴의 경험을 8개로 뻥튀기하여 버퍼에 삽입
+            for sym_state, sym_action, sym_next_state in get_symmetries(state, action, next_state):
+                memory.push(sym_state, sym_action, reward, sym_next_state, done)
+                
             state = next_state
 
             if len(memory) > BATCH_SIZE:
@@ -125,10 +133,8 @@ def train():
                 s_prime = torch.FloatTensor(s_prime).to(device)
                 d = torch.FloatTensor(d).unsqueeze(1).to(device)
 
-                # 현재 상태 Q값
                 q_vals = policy_net(s).gather(1, a)
                 
-                # Double DQN (DDQN) 로직
                 with torch.no_grad():
                     next_actions = policy_net(s_prime).argmax(1).unsqueeze(1)
                     next_q_values = target_net(s_prime).gather(1, next_actions)
@@ -145,7 +151,7 @@ def train():
         if reward > 0: 
             if env.current_player == 1: p1_wins += 1
             else: p2_wins += 1
-        elif reward <= -10: # 반칙
+        elif reward <= -10: 
             invalid_moves += 1
 
         epsilon = max(epsilon_min, epsilon * epsilon_decay)
