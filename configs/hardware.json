@@ -1,0 +1,17 @@
+{
+  "button_pins": [17, 22, 5, 6, 13, 19, 26, 21, 20],
+  "button_active_high": true,
+  "lcd_cs_pins": [2, 15, 4, 12, 16, 18, 14, 23, 24],
+  "dc_pin": 25,
+  "reset_pin": 27,
+  "rotation": [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  "screen_order": [1, 2, 3, 4, 5, 6, 7, 8, 9],
+  "width": 240,
+  "height": 240,
+  "x_offset": 0,
+  "y_offset": 80,
+  "baudrate": 6400000,
+  "debounce_ms": 40,
+  "long_press_ms": 3000,
+  "poll_ms": 10
+}

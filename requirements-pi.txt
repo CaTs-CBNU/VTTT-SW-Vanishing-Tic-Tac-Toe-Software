@@ -1,0 +1,4 @@
+-r requirements-runtime.txt
+RPi.GPIO>=0.7.1
+adafruit-blinka>=8.0.0
+adafruit-circuitpython-rgb-display>=3.14.0

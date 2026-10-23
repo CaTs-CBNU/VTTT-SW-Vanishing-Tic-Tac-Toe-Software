@@ -1,0 +1,23 @@
+{
+  "coins": 941,
+  "theme": "squirrel",
+  "owned": [
+    "default",
+    "fishcat",
+    "squirrel",
+    "xmas"
+  ],
+  "settings": {
+    "opponent": "ai",
+    "difficulty": "hard",
+    "human_first": true,
+    "show_lifetime": false
+  },
+  "stats": {
+    "played": 8,
+    "wins": 1,
+    "losses": 7,
+    "draws": 0,
+    "local": 0
+  }
+}

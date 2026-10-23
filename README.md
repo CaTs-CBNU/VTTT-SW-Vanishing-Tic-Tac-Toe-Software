@@ -1,3 +1,19 @@
+# VTTT - 다이내믹 틱택토
+
+2026-09-09: Raspberry Pi 4 / ST7789 LCD 9개 / 물리 버튼 9개용 통합 실행 앱을 추가했습니다.
+
+- **하드웨어 설치와 실행:** [docs/HARDWARE_GUIDE_KO.md](docs/HARDWARE_GUIDE_KO.md)
+- **구현 범위·임시 규칙·검증 범위:** [docs/IMPLEMENTATION_NOTES_KO.md](docs/IMPLEMENTATION_NOTES_KO.md)
+- Pi 실행: `bash scripts/run_hardware.sh`
+- PC 실행: `python -m vttt --simulate`
+- 기존 명령도 통합 앱으로 연결: `python -m display.app.main`
+- 하드웨어 기본 설정은 발표 PDF가 아닌 **업로드된 기존 코드의 핀 배치와 active-high 버튼**입니다.
+- 상점은 게임에서 얻는 로컬 가상 코인으로만 동작합니다.
+
+아래는 기존 프로젝트 문서입니다. 실제 게임기의 진입점은 `vttt`이며, `src`, `src2`, 단일 RL 파일은 기존 학습·실험용 코드입니다.
+
+---
+
 # [프로젝트 명]: VTTT(Vanishing-Tic-Tac-Toe)---3×3 디스플레이 모듈을 활용한 강화학습 기반 배니싱 틱택토 게임판 개발 
 
 ## 1. 프로젝트 개요 (Overview)

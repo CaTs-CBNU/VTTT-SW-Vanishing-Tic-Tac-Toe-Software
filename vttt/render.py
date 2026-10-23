@@ -1,0 +1,221 @@
+"""Pillow renderer: compose one logical canvas, then let the backend split it."""
+
+import os
+from pathlib import Path
+from PIL import Image, ImageDraw, ImageFont, ImageOps
+
+from .config import ROOT
+from .profile import THEMES
+from .rules import MODES
+
+BG, INK, BLUE, PINK, GREEN = "#F7F3EF", "#45494C", "#5579FF", "#E965B9", "#45AD76"
+ASSETS = ROOT / "src/static/images"
+DIFFICULTY = {"easy": "쉬움", "normal": "보통", "hard": "어려움"}
+
+
+class Renderer:
+    def __init__(self, font_path=None):
+        candidates = [font_path, os.environ.get("VTTT_FONT_PATH"),
+                      "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+                      "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+                      "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
+                      "C:/Windows/Fonts/malgun.ttf",
+                      "/System/Library/Fonts/AppleSDGothicNeo.ttc"]
+        self.font_path = next((p for p in candidates if p and Path(p).is_file()), None)
+        if self.font_path is None:
+            raise RuntimeError("한글 글꼴이 필요합니다. Pi: sudo apt install fonts-noto-cjk / --font 글꼴경로")
+        self.fonts = {}
+        self.pages = {}
+        self.icons = {}
+        for page in ("start", "menu", "mode"):
+            canvas = Image.new("RGB", (720, 720), BG)
+            for i in range(1, 10):
+                stem = ASSETS / page / f"{page}{i}"
+                file = next((stem.with_suffix(ext) for ext in (".png", ".jpeg", ".jpg")
+                             if stem.with_suffix(ext).is_file()), None)
+                if file is None:
+                    raise FileNotFoundError("화면 이미지가 없습니다: " + str(stem))
+                with Image.open(file) as img:
+                    tile = img.convert("RGB").resize((240, 240), Image.Resampling.LANCZOS)
+                canvas.paste(tile, self.origin(i))
+            self.pages[page] = canvas
+        for theme in THEMES:
+            for mark in ("o", "x"):
+                with Image.open(ASSETS / "theme" / f"{theme}-{mark}.png") as img:
+                    self.icons[theme, mark] = ImageOps.contain(img.convert("RGB"), (150, 150))
+
+    @staticmethod
+    def origin(button):
+        return ((button - 1) % 3 * 240, (button - 1) // 3 * 240)
+
+    def font(self, size):
+        if size not in self.fonts:
+            self.fonts[size] = ImageFont.truetype(self.font_path, size)
+        return self.fonts[size]
+
+    def text(self, draw, xy, text, size=26, color=INK, max_width=212):
+        font = self.font(size)
+        while size > 12 and draw.textlength(text, font=font) > max_width:
+            size -= 1
+            font = self.font(size)
+        draw.text(xy, text, font=font, fill=color, anchor="mm")
+
+    def tile(self, canvas, button, title, lines=(), accent=BLUE, footer="", selected=False):
+        x, y = self.origin(button)
+        d = ImageDraw.Draw(canvas)
+        d.rounded_rectangle((x + 6, y + 6, x + 234, y + 234), radius=15,
+                            fill="#FFFFFF" if selected else BG, outline=accent if selected else "#D7D4D0", width=3)
+        self.text(d, (x + 120, y + 44), title, 31, accent)
+        for i, line in enumerate(lines):
+            self.text(d, (x + 120, y + 98 + i * 30), line, 23)
+        if footer:
+            self.text(d, (x + 120, y + 207), footer, 17, "#74787D")
+
+    def strip(self, canvas, button, text, color=INK):
+        x, y = self.origin(button)
+        d = ImageDraw.Draw(canvas)
+        d.rounded_rectangle((x + 8, y + 205, x + 232, y + 234), radius=8, fill=BG)
+        self.text(d, (x + 120, y + 219), text, 17, color)
+
+    def draw(self, app):
+        screen = app.screen
+        if screen in ("start", "menu", "mode"):
+            canvas = self.pages[screen].copy()
+            if screen == "mode":
+                for button in (4, 6, 7, 8):
+                    self.strip(canvas, button, "임시 규칙", PINK)
+            if app.notice:
+                self.strip(canvas, 8 if screen == "start" else 2, app.notice)
+            return canvas
+        canvas = Image.new("RGB", (720, 720), BG)
+        s = app.settings
+        mode = MODES[app.mode_key]
+        if screen == "setup":
+            self.tile(canvas, 1, "돌아가기", ("모드 선택",))
+            self.tile(canvas, 2, mode.title, ("임시 규칙" if mode.provisional else "게임 준비",), accent=PINK if mode.provisional else BLUE)
+            self.tile(canvas, 3, "테마", (THEMES[app.profile.data["theme"]][0],), footer="눌러서 선택")
+            self.tile(canvas, 4, "상대", ("AI 대국" if s["opponent"] == "ai" else "같은 기기 2인",), footer="누르면 변경")
+            self.tile(canvas, 5, "대국 시작", ("O 먼저 · X 나중", "이 칸을 눌러 시작"), accent=GREEN, selected=True)
+            first = "사람 선공" if s["human_first"] else "AI 선공"
+            self.tile(canvas, 6, "선공", (first if s["opponent"] == "ai" else "1번 플레이어 O",), footer="AI 대국에서 변경")
+            self.tile(canvas, 7, "AI 난이도", (DIFFICULTY[s["difficulty"]],), footer="쉬움 / 보통 / 어려움")
+            self.tile(canvas, 8, "게임 규칙", ("눌러서 확인", "5번 길게: 일시정지"))
+            self.tile(canvas, 9, "대국 안내", ("차례를 기다려주세요" if s["opponent"] == "ai" else "번갈아 눌러주세요",
+                        f"최대 {app.config['max_moves']}회 착수", "블라인드 AI: 전체 기억" if mode.blind else "끝나면 다시 대국"))
+        elif screen == "game":
+            self.game(canvas, app)
+        elif screen == "pause":
+            self.tile(canvas, 2, "일시정지", (mode.title,))
+            self.tile(canvas, 4, "메인 메뉴", ("현재 대국 포기",))
+            self.tile(canvas, 5, "계속하기", ("대국으로 복귀",), accent=GREEN, selected=True)
+            self.tile(canvas, 6, "다시 시작", ("같은 설정으로", "새 대국 시작"))
+            self.tile(canvas, 8, "종료", ("프로그램 종료", "라즈베리파이는 유지"), accent=PINK)
+        elif screen == "result":
+            title = app.result_title()
+            self.tile(canvas, 2, "대국 결과", (mode.title,))
+            self.tile(canvas, 4, "다시 대국", ("같은 모드와 상대",))
+            self.tile(canvas, 5, title, (f"{app.game.moves}회 착수", f"코인 +{app.last_coins}"), accent=GREEN, selected=True)
+            self.tile(canvas, 6, "모드 변경", ("다른 게임 선택",))
+            self.tile(canvas, 7, "최종 게임판", ("눌러서 다시 보기",))
+            self.tile(canvas, 8, "메인 메뉴", ("상점 · 설정 · 점수",))
+            reason = "착수 횟수 제한" if app.game.reason == "limit" else "판이 가득 찼습니다" if app.game.reason == "full" else "세 칸 연결 성공"
+            self.tile(canvas, 9, "종료 사유", (reason,))
+        elif screen == "final_board":
+            self.game(canvas, app, reveal=True)
+            self.strip(canvas, 5, "아무 칸: 결과로")
+        elif screen in ("shop", "themes"):
+            self.tile(canvas, 1, "돌아가기", ("이전 화면",))
+            self.tile(canvas, 2, "상점 · 테마", (f"보유 {app.profile.data['coins']} 코인", "실제 결제 없음"), accent=GREEN)
+            for button, (key, (name, price)) in zip((3, 4, 5, 6), THEMES.items()):
+                owned = key in app.profile.data["owned"]
+                footer = "사용 중" if app.profile.data["theme"] == key else "눌러서 적용" if owned else f"{price} 코인 · 눌러 구매"
+                self.tile(canvas, button, name, (), footer=footer, selected=app.profile.data["theme"] == key)
+                x, y = self.origin(button)
+                small = self.icons[key, "o"].resize((92, 92))
+                canvas.paste(small, (x + 74, y + 83))
+            self.tile(canvas, 7, "코인 받기", ("AI 승리 5 · 무승부 2", "AI 패배 1 · 2인 2"))
+            self.tile(canvas, 8, "테마 적용", ("말 모양을 바꿔요", "게임 규칙은 그대로"))
+            self.tile(canvas, 9, "알림", (app.notice or "테마를 선택하세요",))
+        elif screen == "settings":
+            self.tile(canvas, 1, "돌아가기", ("메인 메뉴",))
+            self.tile(canvas, 2, "설정", ("누르면 바로 저장",))
+            self.tile(canvas, 4, "기본 상대", ("AI" if s["opponent"] == "ai" else "2인 대국",))
+            self.tile(canvas, 5, "AI 난이도", (DIFFICULTY[s["difficulty"]],))
+            self.tile(canvas, 6, "말 수명 표시", ("켜짐" if s["show_lifetime"] else "꺼짐",), footer="배니싱 계열 숫자")
+            self.tile(canvas, 7, "사람 선공", ("켜짐" if s["human_first"] else "꺼짐",))
+            self.tile(canvas, 8, "게임 설명", ("조작과 규칙 보기",))
+            self.tile(canvas, 9, "기기 확인", ("버튼 · LCD 번호", "눌러서 진단 시작"))
+        elif screen == "scores":
+            stats = app.profile.data["stats"]
+            self.tile(canvas, 1, "돌아가기", ("메인 메뉴",))
+            self.tile(canvas, 2, "플레이 기록", (f"총 {stats['played']}회",))
+            for b, title, value in ((4, "AI 상대 승리", stats["wins"]), (5, "AI 상대 패배", stats["losses"]),
+                                    (6, "AI 상대 무승부", stats["draws"]), (7, "2인 대국", stats["local"])):
+                self.tile(canvas, b, title, (str(value) + "회",))
+            self.tile(canvas, 8, "보유 코인", (str(app.profile.data["coins"]),))
+            self.tile(canvas, 9, "저장 안내", ("이 기기에 저장됩니다",))
+        elif screen == "help":
+            self.tile(canvas, 1, "돌아가기", ("이전 화면",))
+            self.tile(canvas, 2, "도움말", (f"{app.help_index + 1} / 7",))
+            if app.help_index == 0:
+                self.tile(canvas, 4, "착수", ("놓고 싶은 칸을", "한 번 눌렀다 떼세요"))
+                self.tile(canvas, 5, "일시정지", ("가운데 5번 버튼을", "1.3초 길게 누르세요"))
+                self.tile(canvas, 6, "말 수명", ("1: 다음 내 착수에 제거", "2·3: 그만큼 더 유지"))
+            else:
+                rule = list(MODES.values())[app.help_index - 1]
+                self.tile(canvas, 4, rule.title, (rule.description[0],))
+                self.tile(canvas, 5, "진행 규칙", rule.description[1:])
+                self.tile(canvas, 6, "규칙 상태", ("임시 규칙" if rule.provisional else "확정 규칙",), accent=PINK if rule.provisional else BLUE)
+            self.tile(canvas, 7, "이전 설명", ("눌러서 이동",))
+            self.tile(canvas, 9, "다음 설명", ("눌러서 이동",))
+        elif screen == "diagnostic":
+            for i in range(1, 10):
+                self.tile(canvas, i, str(i), ("버튼 / LCD", "입력 확인" if app.diagnostic_button == i else "이 칸을 눌러보세요"),
+                          accent=GREEN if app.diagnostic_button == i else BLUE,
+                          selected=app.diagnostic_button == i, footer="5번 길게: 돌아가기")
+        if app.notice and screen not in ("shop", "themes", "game"):
+            self.strip(canvas, 2, app.notice, PINK)
+        return canvas
+
+    def game(self, canvas, app, reveal=False):
+        game = app.game
+        lives = game.lifetimes()
+        hidden = game.mode.blind and not app.blind_visible and not reveal and not game.done
+        for button in range(1, 10):
+            action = button - 1
+            x, y = self.origin(button)
+            d = ImageDraw.Draw(canvas)
+            mark = game.board[action]
+            winning = action in game.winning_cells
+            d.rounded_rectangle((x + 6, y + 6, x + 234, y + 234), radius=12,
+                                fill="#E3F4E9" if winning else BG,
+                                outline=GREEN if winning else "#D5D0CB", width=4 if winning else 2)
+            self.text(d, (x + 215, y + 24), str(button), 17, "#98938F")
+            if mark and not hidden:
+                if app.profile.data["theme"] == "default":
+                    if mark == 1:
+                        d.ellipse((x + 57, y + 47, x + 183, y + 173), outline=BLUE, width=14)
+                    else:
+                        d.line((x + 63, y + 53, x + 177, y + 167), fill=PINK, width=16)
+                        d.line((x + 177, y + 53, x + 63, y + 167), fill=PINK, width=16)
+                else:
+                    icon = self.icons[app.profile.data["theme"], "o" if mark == 1 else "x"]
+                    canvas.paste(icon, (x + (240 - icon.width) // 2, y + 38))
+                if app.settings["show_lifetime"] and action in lives:
+                    self.text(d, (x + 29, y + 25), str(lives[action]), 23, PINK if lives[action] == 1 else BLUE)
+            elif not mark and not hidden and action == game.last_action:
+                self.text(d, (x + 120, y + 110), "", 26)
+            if button == 5:
+                if game.done:
+                    status = app.result_title()
+                elif app.notice:
+                    status = app.notice
+                else:
+                    owner = "AI" if app.is_ai_turn() else "사람" if app.settings["opponent"] == "ai" else ("1P" if game.turn == 1 else "2P")
+                    status = owner + (" O 차례" if game.turn == 1 else " X 차례")
+                self.text(d, (x + 120, y + 201), status, 19)
+                self.text(d, (x + 120, y + 224), "5 길게: 일시정지", 14, "#76716D")
+            elif button == 1:
+                self.text(d, (x + 120, y + 219), game.mode.title, 16, "#76716D")
+            elif button == 9 and game.mode.blind:
+                self.text(d, (x + 120, y + 219), "기억하세요" if hidden else "말 공개 중", 16, "#76716D")

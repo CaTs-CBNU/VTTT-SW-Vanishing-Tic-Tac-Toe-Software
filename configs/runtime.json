@@ -1,0 +1,12 @@
+{
+  "default_mode": "vanishing",
+  "opponent": "ai",
+  "difficulty": "normal",
+  "human_first": true,
+  "show_lifetime": true,
+  "blind_reveal_seconds": 1.5,
+  "max_moves": 200,
+  "model_npz": "results/saved_models/vanish_runs/checkpoints/runtime_model.npz",
+  "model_pt": "results/saved_models/vanish_runs/checkpoints/best.pt",
+  "profile": "runtime/profile.json"
+}
