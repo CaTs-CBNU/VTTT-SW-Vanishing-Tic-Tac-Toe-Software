@@ -48,6 +48,19 @@ class RuleTests(unittest.TestCase):
         self.assertTrue(draw.done)
         self.assertEqual((draw.winner, draw.reason), (0, "full"))
 
+    def test_all_eight_straight_lines_win_and_bent_lines_do_not(self):
+        for cells in ((0,1,2),(3,4,5),(6,7,8),(0,3,6),(1,4,7),(2,5,8),(0,4,8),(2,4,6)):
+            game=Game("original")
+            game.board=[1 if i in cells else 0 for i in range(9)]
+            last=cells[-1];game.board[last]=0;game.queues[1]=list(cells[:-1])
+            game.play(last)
+            self.assertEqual(game.winner,1,cells)
+        for cells in ((0,5,6),(2,3,8)):
+            game=Game("original")
+            game.board=[1 if i in cells[:-1] else 0 for i in range(9)]
+            game.queues[1]=list(cells[:-1]);game.play(cells[-1])
+            self.assertFalse(game.done,cells)
+
     def test_gravity_clicks_drop_in_column(self):
         game = Game("gravity")
         self.assertEqual(game.play(0), 6)
@@ -151,7 +164,7 @@ class AppTests(unittest.TestCase):
             self.press(button)
             self.assertEqual((self.app.screen, self.app.mode_key), ("setup", mode))
             self.press(8)
-            self.assertEqual(self.app.screen, "help")
+            self.assertEqual(self.app.screen, "rps")
             self.press(1)
             self.assertEqual(self.app.screen, "setup")
             self.press(1)

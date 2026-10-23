@@ -1,5 +1,7 @@
 # VTTT - 다이내믹 틱택토
 
+2026-10-23: 추가 버튼 이미지와 PDF 구성을 반영하고 통신·Wi-Fi **UI 데모**를 추가했습니다. 실제 온라인·로컬·Wi-Fi 통신은 구현하지 않습니다. 새 화면 조작과 검증 범위: [docs/UI_UPDATE_KO.md](docs/UI_UPDATE_KO.md).
+
 2026-09-09: Raspberry Pi 4 / ST7789 LCD 9개 / 물리 버튼 9개용 통합 실행 앱을 추가했습니다.
 
 - **하드웨어 설치와 실행:** [docs/HARDWARE_GUIDE_KO.md](docs/HARDWARE_GUIDE_KO.md)

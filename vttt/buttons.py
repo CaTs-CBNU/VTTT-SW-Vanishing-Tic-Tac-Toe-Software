@@ -15,6 +15,7 @@ class ButtonFilter:
         self.debounce = debounce_ms / 1000
         self.long_press = long_press_ms / 1000
         self.buttons = {}
+        self.long_buttons = {5}
 
     def feed(self, button, pressed, now):
         events = []
@@ -35,7 +36,7 @@ class ButtonFilter:
                     events.append(ButtonEvent(button, "short", b["down"]))
                 b["down"] = None
         if b["stable"] and b["raw"] and b["down"] is not None and not b["long"]:
-            if button == 5 and now - b["down"] >= self.long_press:
+            if button in self.long_buttons and now - b["down"] >= self.long_press:
                 b["long"] = True
                 events.append(ButtonEvent(button, "long", b["down"]))
         return events

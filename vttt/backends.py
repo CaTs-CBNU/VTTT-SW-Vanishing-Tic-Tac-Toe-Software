@@ -22,12 +22,20 @@ class RecoveryButtonFilter(ButtonFilter):
     def __init__(self, debounce_ms=40, long_press_ms=2000):
         super().__init__(debounce_ms, long_press_ms)
         self.recovery = ButtonFilter(debounce_ms, 2000)
+        self.wifi_input = False
+        self.recovery_blocked = False
 
     def feed(self, button, pressed, now):
+        self.long_buttons = set(range(1, 10)) if self.wifi_input else {5}
+        ordinary = super().feed(button, pressed, now)
         if button == 3:
-            return [ButtonEvent(3, event.kind, event.timestamp)
-                    for event in self.recovery.feed(5, pressed, now)]
-        return super().feed(button, pressed, now)
+            recovery = [ButtonEvent(3, event.kind, event.timestamp)
+                        for event in self.recovery.feed(5, pressed, now)]
+            if self.wifi_input or self.recovery_blocked:
+                self.recovery_blocked = bool(pressed or self.recovery.buttons[5]["stable"])
+                return ordinary if self.wifi_input else []
+            return recovery
+        return ordinary
 
 
 class DisplaySPI:
@@ -71,6 +79,8 @@ class RaspberryPiBackend:
         self.last_tiles = [None] * 9
         self.input_error = None
         self.closed = False
+        self.input_screen = "start"
+        self.button_filter = RecoveryButtonFilter(cfg["debounce_ms"], cfg["long_press_ms"])
         try:
             GPIO.setmode(GPIO.BCM)
             GPIO.setwarnings(False)
@@ -148,8 +158,12 @@ class RaspberryPiBackend:
         for pin in self.cs_pins:
             pin.value = True
 
+    def set_input_context(self, screen):
+        self.input_screen = screen
+        self.button_filter.wifi_input = screen in ("wifi_chars", "wifi_symbols")
+
     def _poll_buttons(self):
-        filt = RecoveryButtonFilter(self.cfg["debounce_ms"], self.cfg["long_press_ms"])
+        filt = self.button_filter
         try:
             while not self.stop.is_set():
                 now = time.monotonic()
@@ -164,7 +178,8 @@ class RaspberryPiBackend:
 
     def show(self, frame):
         self._last_frame = frame.copy()
-        frame = self._with_recovery_hint(frame)
+        if self._recovery_notice_until:
+            frame = self._with_recovery_hint(frame)
         for logical, tile in enumerate(split_frame(frame)):
             payload = tile.tobytes()
             if payload == self.last_tiles[logical]:
@@ -187,7 +202,7 @@ class RaspberryPiBackend:
             except queue.Empty:
                 break
         result = [event for event in result if event.timestamp > self._accept_after]
-        if any(event.button == 3 and event.kind == "long" for event in result):
+        if self.input_screen not in ("wifi_chars", "wifi_symbols") and any(event.button == 3 and event.kind == "long" for event in result):
             self._recover_displays()
             # Discard this batch; inputs started during recovery are filtered
             # by _accept_after even when their release arrives later.
@@ -233,6 +248,7 @@ class DesktopBackend:
         self.events = []
         self.closed = False
         self.down = {}
+        self.long_buttons = {5}
         self.long_seconds = cfg["long_press_ms"] / 1000
         self.canvas.bind("<ButtonPress-1>", self._mouse_down)
         self.canvas.bind("<ButtonRelease-1>", self._mouse_up)
@@ -241,6 +257,9 @@ class DesktopBackend:
         self.root.bind("<FocusOut>", lambda _e: self.down.clear())
         self.root.protocol("WM_DELETE_WINDOW", self.close)
         self.photos = []
+
+    def set_input_context(self, screen):
+        self.long_buttons = set(range(1, 10)) if screen in ("wifi_chars", "wifi_symbols") else {5}
 
     def _cell(self, x, y):
         col, row = x // 244, y // 244
@@ -266,7 +285,7 @@ class DesktopBackend:
     def _release(self, key):
         item = self.down.pop(key, None)
         if item and not item[2]:
-            kind = "long" if item[0] == 5 and time.monotonic() - item[1] >= self.long_seconds else "short"
+            kind = "long" if item[0] in self.long_buttons and time.monotonic() - item[1] >= self.long_seconds else "short"
             self.events.append(ButtonEvent(item[0], kind, item[1]))
 
     def show(self, frame):
@@ -282,8 +301,8 @@ class DesktopBackend:
         self.root.update()
         now = time.monotonic()
         for key, (button, started, emitted) in list(self.down.items()):
-            if button == 5 and not emitted and now - started >= self.long_seconds:
-                self.events.append(ButtonEvent(5, "long", started))
+            if button in self.long_buttons and not emitted and now - started >= self.long_seconds:
+                self.events.append(ButtonEvent(button, "long", started))
                 self.down[key] = (button, started, True)
         events, self.events = self.events, []
         return events

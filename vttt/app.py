@@ -5,9 +5,11 @@ import logging
 import threading
 import time
 
+from .connectivity_ui import ConnectivityUI
 from .ai import GameAI
 from .profile import Profile, THEMES
 from .rules import Game, MODES
+from .ui_render import SHOP_THEMES
 
 LOG = logging.getLogger(__name__)
 MODE_BUTTONS = {4: "blind", 5: "vanishing", 6: "gravity", 7: "switch_nine", 8: "switch_one", 9: "original"}
@@ -34,11 +36,17 @@ class Application:
         self.blind_visible, self.reveal_pending, self.result_pending = True, False, False
         self.reveal_until, self.result_at = None, None
         self.ai_after = 0
+        self.connectivity = ConnectivityUI(self)
+        self.pending_difficulty = self.settings["difficulty"]
+        self.rps_choice = None
+        self.shop_page, self.shop_selected = 0, None
+        self.input_epoch, self.presented_epoch = 0, -1
 
     def touch(self):
         self.revision += 1
 
     def go(self, screen):
+        self.input_epoch += 1
         self.screen, self.notice, self.notice_until = screen, "", None
         self.touch()
 
@@ -76,6 +84,7 @@ class Application:
         self.cancel_ai()
         self.game = Game(self.mode_key, self.config["max_moves"])
         self.human_mark = 1 if self.settings["human_first"] else -1
+        self.local_first_mark = self.human_mark
         self.recorded, self.last_coins = False, 0
         self.blind_visible = True
         self.reveal_until = self.result_at = None
@@ -92,7 +101,7 @@ class Application:
             return "무승부"
         if self.settings["opponent"] == "ai":
             return "사람 승리!" if self.game.winner == self.human_mark else "AI 승리!"
-        return "1P O 승리!" if self.game.winner == 1 else "2P X 승리!"
+        return ("1P" if self.game.winner == self.local_first_mark else "2P") + (" O 승리!" if self.game.winner == 1 else " X 승리!")
 
     def make_move(self, action):
         try:
@@ -129,6 +138,8 @@ class Application:
         if event.timestamp and event.timestamp <= self.accept_after:
             return
         button = event.button
+        if self.connectivity.handle(event):
+            return
         if event.kind == "long" and button == 5:
             if self.screen == "game" and not self.game.done:
                 self.cancel_ai()
@@ -146,12 +157,10 @@ class Application:
             if button == 8:
                 self.go("menu")
         elif self.screen == "menu":
-            pages = {2: "shop", 4: "settings", 5: "mode", 6: "scores"}
+            pages = {2: "shop", 4: "scores", 5: "mode", 6: "settings", 8: "communication"}
             if button in pages:
                 self.return_screen = "menu"
                 self.go(pages[button])
-            elif button == 8:
-                self.open_help("menu")
         elif self.screen == "mode":
             if button == 1:
                 self.go("menu")
@@ -160,23 +169,42 @@ class Application:
                 self.go("themes")
             elif button in MODE_BUTTONS:
                 self.mode_key = MODE_BUTTONS[button]
+                self.pending_difficulty = self.settings["difficulty"]
                 self.go("setup")
         elif self.screen == "setup":
             if button == 1:
                 self.go("mode")
-            elif button == 3:
-                self.return_screen = "setup"
-                self.go("themes")
-            elif button == 4:
-                self.toggle("opponent")
-            elif button == 5:
-                self.start_game()
-            elif button == 6 and self.settings["opponent"] == "ai":
-                self.toggle("human_first")
+            elif button in (4, 5, 6):
+                self.pending_difficulty = {4: "easy", 5: "normal", 6: "hard"}[button]
+                self.touch()
             elif button == 7:
-                self.toggle("difficulty")
+                self.pending_difficulty = None
+                self.touch()
             elif button == 8:
-                self.open_help("setup", current_mode=True)
+                if self.pending_difficulty is None:
+                    self.message("난이도를 선택해주세요")
+                else:
+                    self.settings["difficulty"] = self.pending_difficulty
+                    self.save_settings()
+                    self.rps_choice = None
+                    self.go("rps")
+        elif self.screen == "rps":
+            if button == 1:
+                self.go("setup")
+            elif button in (7, 8, 9):
+                import random
+                human = button - 7  # scissors, rock, paper
+                other = random.randrange(3)
+                self.rps_choice = other
+                if human == other:
+                    self.message("무승부 · 다시 선택해주세요")
+                else:
+                    self.settings["human_first"] = (human - other) % 3 == 1
+                    self.save_settings()
+                    self.rps_until = self.clock() + 1.2
+                    self.go("rps_result")
+        elif self.screen == "rps_result":
+            pass
         elif self.screen == "game":
             if not self.game.done and not self.is_ai_turn():
                 if not (self.game.mode.blind and self.reveal_until is not None):
@@ -205,10 +233,19 @@ class Application:
         elif self.screen in ("shop", "themes"):
             if button == 1:
                 self.go(self.return_screen)
-            elif button in (3, 4, 5, 6):
-                theme = list(THEMES)[button - 3]
+            elif button in (7, 9):
+                pages = len(SHOP_THEMES)
+                self.shop_page = (self.shop_page + (-1 if button == 7 else 1)) % pages
+                self.shop_selected = None
+                self.touch()
+            elif button in (4, 5, 6):
+                index = (self.shop_page + button - 4) % len(SHOP_THEMES)
+                if index < len(SHOP_THEMES):
+                    self.shop_selected = SHOP_THEMES[index]
+                    self.touch()
+            elif button == 8 and self.shop_selected:
                 try:
-                    self.message(self.profile.buy_or_select(theme))
+                    self.message(self.profile.buy_or_select(self.shop_selected))
                 except OSError:
                     LOG.exception("Cannot save theme")
                     self.message("테마 저장 실패")
@@ -246,6 +283,9 @@ class Application:
 
     def tick(self):
         now = self.clock()
+        self.connectivity.tick()
+        if self.screen == "rps_result" and now >= self.rps_until:
+            self.start_game()
         if self.notice_until is not None and now >= self.notice_until:
             self.notice, self.notice_until = "", None
             self.touch()
@@ -286,10 +326,15 @@ class Application:
     def present(self):
         if self.rendered_revision == self.revision:
             return
+        if hasattr(self.backend, "set_input_context"):
+            self.backend.set_input_context(self.screen)
         self.backend.show(self.renderer.draw(self))
         now = self.clock()
         # Ignore stale clicks collected during the previous screen's SPI transfer.
-        self.accept_after, self.rendered_revision = now, self.revision
+        if self.presented_epoch != self.input_epoch or self.screen not in ("wifi_scan", "wifi_password"):
+            self.accept_after = now
+            self.presented_epoch = self.input_epoch
+        self.rendered_revision = self.revision
         if self.screen == "game":
             if self.reveal_pending:
                 self.reveal_pending = False
@@ -297,8 +342,6 @@ class Application:
             if self.result_pending:
                 self.result_pending = False
                 self.result_at = now + 2.0
-        if self.notice_until is not None:
-            self.notice_until = now + 2.0
 
     def run(self):
         try:
@@ -322,5 +365,6 @@ class Application:
             return
         self.closed = True
         self.cancel_ai()
+        self.connectivity.forget()
         self.executor.shutdown(wait=False, cancel_futures=True)
         self.backend.close()

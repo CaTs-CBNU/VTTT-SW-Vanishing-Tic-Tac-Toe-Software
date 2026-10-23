@@ -6,7 +6,8 @@ import tempfile
 from pathlib import Path
 
 THEMES = {"default": ("기본", 0), "fishcat": ("고양이", 20),
-          "squirrel": ("다람쥐", 20), "xmas": ("크리스마스", 30)}
+          "squirrel": ("다람쥐", 20), "xmas": ("크리스마스", 30),
+          "chiikawa1": ("치이카와 1", 20), "chiikawa2": ("치이카와 2", 20)}
 
 
 class Profile:

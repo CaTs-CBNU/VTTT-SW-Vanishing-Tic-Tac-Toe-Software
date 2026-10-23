@@ -22,9 +22,26 @@ def render(output, font=None):
         cfg["profile"] = str(Path(temp) / "profile.json")
         app = Application(cfg, HeadlessBackend(), Renderer(font), ai=GameAI(cfg))
         try:
-            for screen in ("start", "menu", "mode", "setup", "shop", "settings", "scores", "help", "diagnostic"):
+            for screen in ("start", "menu", "mode", "setup", "rps", "shop", "settings", "scores", "help", "diagnostic"):
                 app.go(screen)
                 app.renderer.draw(app).save(output / (screen + ".png"))
+            ui = app.connectivity
+            for screen in ("communication", "connection", "room_create", "room_search"):
+                for connection in ("local", "online"):
+                    ui.mode = connection
+                    app.go(screen)
+                    ui.room_ready = True
+                    app.renderer.draw(app).save(output / (screen + "-" + connection + ".png"))
+            ui.network = ui.networks[0]
+            for screen in ("wifi_scanning", "wifi_scan", "wifi_password", "wifi_chars", "wifi_symbols", "wifi_connecting", "wifi_result"):
+                ui.characters = "abcdefghi"
+                app.go(screen)
+                app.renderer.draw(app).save(output / (screen + ".png"))
+            ui.result = "success"
+            app.renderer.draw(app).save(output / "wifi-success.png")
+            app.shop_page = 4
+            app.go("themes")
+            app.renderer.draw(app).save(output / "themes-page2.png")
             app.settings["opponent"] = "local"
             app.start_game()
             for a in (0, 3, 1, 4):
