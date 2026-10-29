@@ -13,6 +13,7 @@ from vttt.app import Application
 from vttt.backends import HeadlessBackend
 from vttt.config import runtime_config
 from vttt.render import Renderer
+from vttt.rules import Game, MODES
 
 
 def render(output, font=None):
@@ -58,8 +59,37 @@ def render(output, font=None):
             app.start_game()
             app.make_move(0)
             app.make_move(4)
+            app.renderer.draw(app).save(output / "blind-reveal.png")
             app.blind_visible = False
             app.renderer.draw(app).save(output / "blind-hidden.png")
+            for name, mode, moves, switch_turns in (("gravity-clear", "gravity", (0, 1, 2, 0, 1, 2), None),
+                                                    ("switch-one-warning", "switch_one", (0, 3, 1, 7), (5,)),
+                                                    ("switch-one", "switch_one", (0, 8, 1, 7), (4,)),
+                                                    ("switch-nine", "switch_nine", (0, 3, 1, 4, 8), (5,))):
+                app.mode_key = mode
+                app.start_game()
+                app.game = Game(mode, cfg["max_moves"], switch_turns=switch_turns)
+                for a in moves:
+                    app.make_move(a)
+                app.renderer.draw(app).save(output / (name + ".png"))
+            app.settings.update(opponent="local", human_first=False)
+            app.mode_key = "vanishing"
+            app.begin_match()
+            for phase, name in ((1, "duel-countdown"), (3, "duel-press")):
+                app.duel_phase = phase
+                app.renderer.draw(app).save(output / (name + ".png"))
+            app.duel_picks = {"top": 0, "bottom": 1}
+            app.rps_human_first, app.duel_reason = True, ""
+            app.go("duel_result")
+            app.renderer.draw(app).save(output / "duel-result.png")
+            app.go("settings")
+            app.flash = (6,)
+            app.renderer.draw(app).save(output / "press-flash.png")
+            app.flash = ()
+            for index in range(1, len(MODES) + 1):
+                app.help_index = index
+                app.go("help")
+                app.renderer.draw(app).save(output / ("help-" + list(MODES)[index - 1] + ".png"))
         finally:
             app.close()
     print("Rendered previews:", output)

@@ -9,7 +9,18 @@ from pathlib import Path
 from .rules import LINES
 
 LOG = logging.getLogger(__name__)
-LIMITS = {"easy": (1, 0.12, 0.30), "normal": (4, 0.45, 0.0), "hard": (8, 1.20, 0.0)}
+# Per mode: (search depth, seconds, random move among safe moves, blunder: random move ignoring wins/blocks).
+# Tuned with tools/difficulty_match.py so each level beats the one below about 80-90% of the time.
+HARD = (8, 1.20, 0.0, 0.0)
+LIMITS = {
+    "vanishing": {"easy": (1, 0.12, 0.3, 0.5), "normal": (3, 0.6, 0.1, 0.15), "hard": HARD},
+    "blind": {"easy": (1, 0.12, 0.3, 0.45), "normal": (3, 0.6, 0.1, 0.15), "hard": HARD},
+    "gravity": {"easy": (2, 0.3, 0.3, 0.3), "normal": (4, 0.8, 0.1, 0.05), "hard": HARD},
+    "switch_one": {"easy": (1, 0.12, 0.3, 0.7), "normal": (3, 0.6, 0.1, 0.25), "hard": HARD},
+    "switch_nine": {"easy": (1, 0.12, 0.3, 0.6), "normal": (3, 0.6, 0.1, 0.15), "hard": HARD},
+    # original has no difficulty screen; the app always plays it at "normal".
+    "original": {"easy": (1, 0.12, 0.3, 0.3), "normal": (2, 0.45, 0.1, 0.08), "hard": HARD},
+}
 
 
 class SearchStopped(Exception):
@@ -57,7 +68,9 @@ class GameAI:
         valid = game.legal_actions()
         if not valid:
             raise ValueError("No move in a finished game")
-        max_depth, seconds, random_ratio = LIMITS[difficulty]
+        max_depth, seconds, random_ratio, blunder_ratio = LIMITS[game.mode_key][difficulty]
+        if blunder_ratio and self.rng.random() < blunder_ratio:
+            return self.rng.choice(valid)
         root = game.turn
         self.nodes = 0
         deadline = time.monotonic() + seconds

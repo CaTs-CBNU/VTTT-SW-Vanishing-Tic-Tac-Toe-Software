@@ -1,23 +1,24 @@
 {
-  "coins": 941,
-  "theme": "squirrel",
+  "coins": 987,
+  "theme": "default",
   "owned": [
+    "chiikawa1",
     "default",
     "fishcat",
     "squirrel",
     "xmas"
   ],
   "settings": {
-    "opponent": "ai",
-    "difficulty": "hard",
+    "opponent": "local",
+    "difficulty": "normal",
     "human_first": true,
     "show_lifetime": false
   },
   "stats": {
-    "played": 8,
-    "wins": 1,
-    "losses": 7,
-    "draws": 0,
-    "local": 0
+    "played": 51,
+    "wins": 3,
+    "losses": 33,
+    "draws": 1,
+    "local": 14
   }
 }

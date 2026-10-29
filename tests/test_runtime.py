@@ -71,20 +71,196 @@ class RuleTests(unittest.TestCase):
             game.play(6)
         self.assertEqual(game.key(), before)
 
-    def test_switching_moves_queues_and_lifetime_together(self):
-        one = Game("switch_one")
-        self.assertEqual(one.play(0), 2)
-        self.assertEqual(one.queues[1], [2])
-        self.assertEqual(one.play(0), 2)
-        self.assertEqual(one.queues[1], [8])
-        nine = Game("switch_nine")
-        for a in (0, 3, 1, 4, 8, 6, 2, 0):
-            nine.play(a)
-        self.assertEqual(nine.last_action, 0)
-        nine.play(3)
-        self.assertEqual(nine.queues[1], [6, 8, 1])
-        self.assertEqual(nine.last_action, 1)
-        self.assertEqual(nine.lifetimes()[6], 1)
+    def test_variant_modes_all_use_vanishing(self):
+        for mode in ("blind", "gravity", "switch_one", "switch_nine"):
+            game = Game(mode, switch_turns=())
+            for a in (0, 1, 2, 3, 4, 5, 6):
+                game.play(game.legal_actions()[0] if mode == "gravity" else a)
+            self.assertEqual(len(game.queues[1]), 3, mode)
+            self.assertEqual(game.board.count(1), 3, mode)
+
+    def test_gravity_vanished_piece_lets_column_fall(self):
+        game = Game("gravity")
+        game.board = [0, 0, 1, -1, 0, -1, 1, 1, -1]
+        game.queues = {1: [6, 7, 2], -1: [3, 8, 5]}
+        game.moves = 6
+        game.play(0)  # O lands on top of column 0, its oldest piece (6) vanishes underneath
+        self.assertEqual(game.board, [0, 0, 1, 1, 0, -1, -1, 1, -1])
+        self.assertEqual(game.queues, {1: [7, 2, 3], -1: [6, 8, 5]})
+        self.assertEqual(game.last_action, 3)
+        self.assertFalse(game.done)
+
+    def test_vanished_piece_is_reported_for_the_fade(self):
+        game = Game()
+        for a in (0, 3, 1, 4, 8, 6):
+            game.play(a)
+            self.assertEqual(game.vanished, ())
+        game.play(2)
+        self.assertEqual(game.vanished, (0, 1))
+        self.assertEqual(game.clone().vanished, (0, 1))
+        game.play(5)
+        self.assertEqual(game.vanished, (3, -1))
+
+    def test_gravity_clear_never_deletes_the_piece_just_placed(self):
+        rng = random.Random(1)
+        clears = 0
+        for _ in range(300):
+            game = Game("gravity", max_moves=60)
+            while not game.done:
+                mover = game.turn
+                game.play(rng.choice(game.legal_actions()))
+                clears += game.last_event == "clear"
+                self.assertEqual(game.board[game.last_action], mover)
+        self.assertGreater(clears, 300)
+
+    def test_gravity_shows_the_vanish_before_the_fall(self):
+        # Reported game: 1P/2P alternate on buttons 5 5 4 4 1 2 9 6.
+        game = Game("gravity")
+        for button in (5, 5, 4, 4, 1, 2, 9):
+            game.play(button - 1)
+        game.play(6 - 1)
+        self.assertEqual(game.vanished, (7, -1))  # X's oldest, on button 8
+        self.assertEqual(game.fell, ((4, 7),))  # the X on button 5 dropped into its place
+        board, lives = game.before_fall()
+        self.assertEqual((board[4], board[7]), (-1, 0))
+        self.assertEqual(lives[4], game.lifetimes()[7])
+        self.assertNotIn(7, lives)
+        for _ in range(100):  # every drop can be undone for display
+            game = Game("gravity", max_moves=40)
+            rng = random.Random(len(_ * "x"))
+            while not game.done:
+                game.play(rng.choice(game.legal_actions()))
+                board, _lives = game.before_fall()
+                self.assertEqual(sorted(board), sorted(game.board))
+
+    def test_gravity_countdown_colour_turns_red(self):
+        from vttt.render import countdown_color
+        self.assertEqual(countdown_color(6, 6), (0x76, 0x71, 0x6D))
+        self.assertEqual(countdown_color(1, 6), (0xE5, 0x38, 0x3B))
+        reds = [countdown_color(left, 6)[0] for left in range(6, 0, -1)]
+        self.assertEqual(reds, sorted(reds))
+
+    def test_gravity_clears_bottom_row_every_six_moves(self):
+        game = Game("gravity")
+        for a in (0, 1, 2, 0, 1):
+            game.play(a)
+        self.assertEqual(game.board, [0, 0, 0, -1, 1, 0, 1, -1, 1])
+        self.assertTrue(game.clear_due())
+        game.play(2)  # bottom row is deleted first, then the sixth piece drops onto the cleared board
+        self.assertEqual(game.last_event, "clear")
+        self.assertEqual(game.board, [0, 0, 0, 0, 0, 0, -1, 1, -1])
+        self.assertEqual(game.queues, {1: [7], -1: [6, 8]})
+        self.assertEqual(game.last_action, 8)
+        self.assertFalse(game.done)
+
+    def test_one_switching_pairs_pieces_showing_the_same_lifetime(self):
+        # O plays buttons 5, 4, 7 and X plays 1, 6, 9: lifetimes 5=1 4=2 7=3 / 1=1 6=2 9=3.
+        game = Game("switch_one", switch_turns=(7,))
+        for a in (4, 0, 3, 5, 6, 8):
+            game.play(a)
+        # O's 5 vanishes on O's own move, so 4<->6 is the shortest pair that can trade.
+        self.assertEqual(game.switch_pair(), (3, 5))
+        game.play(2)
+        self.assertEqual(game.last_event, "switch")
+        self.assertEqual(game.queues, {1: [5, 6, 2], -1: [0, 3, 8]})
+        self.assertEqual((game.board[3], game.board[5]), (-1, 1))
+
+    def test_one_switching_without_vanishing_can_trade_the_oldest_pair(self):
+        game = Game("switch_one", switch_turns=(4,))
+        for a in (0, 8, 1):  # O 0(2) 1(3) ; X 8(3)  -> X moves next, no vanish
+            game.play(a)
+        self.assertEqual(game.switch_pair(), (8, 1))
+        game.play(7)
+        self.assertEqual(game.queues, {1: [0, 8], -1: [1, 7]})
+
+    def test_one_switching_preview_matches_the_actual_swap(self):
+        rng = random.Random(7)
+        switches = 0
+        for _ in range(200):
+            game = Game("switch_one", max_moves=60)
+            while not game.done:
+                pair = game.switch_pair()
+                before, lives_before = game.board.copy(), game.lifetimes()
+                game.play(rng.choice(game.legal_actions()))
+                if game.last_event == "switch":
+                    switches += 1
+                    a, b = pair
+                    self.assertEqual((game.board[a], game.board[b]), (before[b], before[a]))
+                    self.assertEqual(before[a], -before[b])
+                    self.assertEqual(lives_before[a], lives_before[b])
+                elif not game.done:
+                    self.assertIsNone(pair)
+        self.assertGreater(switches, 100)
+
+    def test_one_switching_never_forces_the_mover_to_lose(self):
+        game = Game("switch_one", switch_turns=(6,))
+        for a in (8, 0, 1, 4, 2):
+            game.play(a)
+        # Swapping X's 0 with O's 8 would hand O the line 0-1-2 whatever X plays.
+        self.assertFalse(game.switch_is_fair((0, 8)))
+        a, b = game.switch_pair()
+        self.assertEqual(game.lifetimes()[a], game.lifetimes()[b])
+        for action in game.legal_actions():
+            after = game.clone()
+            after.play(action)
+            self.assertNotEqual(after.winner, 1, action)
+
+    def test_one_switching_is_skipped_when_every_pair_is_unfair(self):
+        game = Game("switch_one", switch_turns=(6,))
+        game.board = [-1, 1, 1, 0, 0, -1, 0, 0, 1]
+        game.queues = {1: [2, 8, 1], -1: [0, 5]}
+        game.moves, game.turn = 5, -1
+        self.assertFalse(game.switch_is_fair((0, 8)))  # both showing lifetime 2
+        self.assertFalse(game.switch_is_fair((5, 1)))  # both showing lifetime 3
+        self.assertIsNone(game.switch_pair())
+        game.play(3)
+        self.assertEqual(game.last_event, "")
+
+    def test_random_one_switch_games_never_lose_by_the_switch_alone(self):
+        rng = random.Random(3)
+        checked = 0
+        for _ in range(150):
+            game = Game("switch_one", max_moves=60)
+            while not game.done:
+                pair = game.switch_pair()
+                if pair:
+                    checked += 1
+                    mover = game.turn
+                    survivors = []
+                    for action in game.legal_actions():
+                        after = game.clone()
+                        after.play(action)
+                        if after.winner == -mover:
+                            continue
+                        if after.done or not any(
+                                (lambda g: (g.play(r), g.winner)[1])(after.clone()) == -mover
+                                for r in after.legal_actions()):
+                            survivors.append(action)
+                    self.assertTrue(survivors, (game.board, game.queues, pair))
+                game.play(rng.choice(game.legal_actions()))
+        self.assertGreater(checked, 50)
+
+    def test_nine_switching_flips_every_owner(self):
+        game = Game("switch_nine", switch_turns=(5,))
+        for a in (0, 3, 1, 4, 8):
+            game.play(a)
+        self.assertEqual(game.board, [-1, -1, 0, 1, 1, 0, 0, 0, -1])
+        self.assertEqual(game.queues, {1: [3, 4], -1: [0, 1, 8]})
+        self.assertEqual(game.turn, -1)
+        self.assertFalse(game.done)
+
+    def test_move_that_wins_is_not_undone_by_switch(self):
+        game = Game("switch_nine", switch_turns=(5,))
+        for a in (0, 3, 1, 4, 2):
+            game.play(a)
+        self.assertEqual((game.winner, game.last_event), (1, ""))
+
+    def test_switch_schedule_is_shared_by_clones(self):
+        game = Game("switch_one")
+        self.assertTrue(game.switch_turns)
+        self.assertGreaterEqual(game.switch_turns[0], 4)
+        self.assertEqual(game.clone().switch_turns, game.switch_turns)
+        self.assertEqual(Game("vanishing").switch_turns, ())
 
     def test_all_modes_terminate_and_preserve_piece_invariants(self):
         rng = random.Random(42)
@@ -97,6 +273,9 @@ class RuleTests(unittest.TestCase):
                         self.assertEqual(set(game.queues[player]), {a for a, p in enumerate(game.board) if p == player})
                         if game.mode.vanishing:
                             self.assertLessEqual(len(game.queues[player]), 3)
+                    if game.mode.gravity:
+                        for a in range(6):
+                            self.assertTrue(game.board[a + 3] or not game.board[a], (mode, game.board))
                 self.assertLessEqual(game.moves, 60)
 
 
@@ -162,6 +341,11 @@ class AppTests(unittest.TestCase):
         self.assertEqual(self.app.screen, "mode")
         for button, mode in MODE_BUTTONS.items():
             self.press(button)
+            if mode == "original":  # no difficulty screen
+                self.assertEqual((self.app.screen, self.app.mode_key), ("rps", mode))
+                self.press(1)
+                self.assertEqual(self.app.screen, "mode")
+                continue
             self.assertEqual((self.app.screen, self.app.mode_key), ("setup", mode))
             self.press(8)
             self.assertEqual(self.app.screen, "rps")
@@ -207,19 +391,149 @@ class AppTests(unittest.TestCase):
         self.press(1)
         self.now[0] += 8  # A slow full-screen SPI transfer must not use up reveal time.
         app.present()
-        self.assertEqual(app.reveal_until, self.now[0] + 1.5)
+        self.assertEqual(app.reveal_until, self.now[0] + app.config["blind_reveal_seconds"])
         self.press(2)
         self.assertEqual(app.game.moves, 1)
-        self.now[0] += 1.6
+        self.now[0] += app.config["blind_reveal_seconds"] + 0.1
         app.tick()
         self.assertFalse(app.blind_visible)
         self.press(5, "long")
         self.press(5)
         self.assertFalse(app.blind_visible)
 
+    def test_one_switch_is_announced_one_turn_ahead(self):
+        app = self.app
+        app.mode_key, app.settings["opponent"] = "switch_one", "local"
+        app.start_game()
+        app.game = Game("switch_one", switch_turns=(5,))
+        for a in (0, 3, 1):
+            app.make_move(a)
+        self.assertEqual(app.notice, "")
+        app.make_move(7)
+        self.assertEqual(app.notice, "다음 수 후 위치 교환!")
+        self.assertEqual(app.game.switch_pair(), (0, 3))  # both showing lifetime 2
+        app.make_move(5)
+        self.assertEqual(app.notice, "위치 교환!")
+        self.assertIsNone(app.game.switch_pair())
+
+    def test_settings_save_on_press_and_forced_first_skips_rps(self):
+        app = self.app
+        app.go("settings")
+        self.press(6)
+        saved = json.loads(Path(app.profile.path).read_text(encoding="utf-8"))
+        self.assertFalse(saved["settings"]["show_lifetime"])
+        self.press(5)  # difficulty is no longer a setting
+        self.assertEqual(app.screen, "settings")
+        self.press(7)
+        self.assertTrue(json.loads(Path(app.profile.path).read_text(encoding="utf-8"))["settings"]["human_first"])
+        app.go("mode")
+        self.press(5)
+        self.press(8)
+        self.assertEqual((app.screen, app.human_mark), ("game", 1))
+        app.go("mode")
+        self.press(9)  # original, no difficulty screen
+        self.assertEqual((app.screen, app.human_mark), ("game", 1))
+        app.go("settings")
+        self.press(7)
+        app.go("mode")
+        self.press(5)
+        self.press(8)
+        self.assertEqual(app.screen, "rps")
+
+    def test_ai_move_waits_two_seconds_however_fast_it_thinks(self):
+        app = self.app
+        app.settings.update(opponent="ai", human_first=True, difficulty="easy")
+        app.start_game()
+        app.present()
+        self.press(1)
+        start = self.now[0]
+        self.now[0] = start + 0.5
+        app.tick()
+        app.future.result(timeout=3)
+        self.now[0] = start + 1.9
+        app.tick()
+        self.assertEqual(app.game.moves, 1)  # computed, but held back
+        self.now[0] = start + 2.0
+        app.tick()
+        self.assertEqual(app.game.moves, 2)
+
+    def test_vanishing_piece_fades_over_one_second_without_eating_clicks(self):
+        app = self.app
+        app.settings["opponent"] = "local"
+        app.start_game()
+        for a in (0, 3, 1, 4, 8, 6):
+            app.make_move(a)
+        self.assertIsNone(app.fade)
+        app.make_move(2)
+        self.assertEqual(app.fade[:2], (0, 1))
+        app.present()
+        pressed = self.now[0] + 0.05
+        steps = []
+        for _ in range(5):
+            self.now[0] += 0.21
+            app.tick()
+            steps.append(app.fade_step)
+            app.present()  # animation frames must not discard the click below
+        self.assertEqual(steps, [1, 2, 3, 4, 5])
+        self.assertIsNone(app.fade)
+        app.handle(ButtonEvent(6, "short", pressed))
+        self.assertEqual(app.game.moves, 8)
+
+    def test_gravity_drop_then_vanish_then_fall_are_separate_motions(self):
+        from vttt.render import Renderer
+        app = self.app
+        app.settings["opponent"] = "local"
+        app.mode_key = "gravity"
+        app.start_game()
+        for button in (5, 5, 4, 4, 1, 2, 9, 6):
+            app.make_move(button - 1)
+        view = Renderer().motion_view
+        start = self.now[0]
+        self.now[0] = start + 0.2  # new X drops into 6; the X on 8 is still whole
+        board, _, movers = view(app)
+        self.assertEqual([(a, b) for a, b, _, _ in movers], [(2, 5)])
+        self.assertEqual((board[7], board[4]), (-1, -1))
+        self.now[0] = start + 0.8  # X on 8 fades in place, nothing moves, X on 5 waits
+        board, _, movers = view(app)
+        self.assertEqual((movers, board[7], board[4]), ([], 0, -1))
+        self.now[0] = start + 1.5  # then the X on 5 falls into 8
+        board, _, movers = view(app)
+        self.assertEqual([(a, b) for a, b, _, _ in movers], [(4, 7)])
+        self.now[0] = start + 2.0
+        app.tick()
+        board, _, movers = view(app)
+        self.assertEqual((movers, board), ([], app.game.board))
+
+    def test_blind_draws_only_the_piece_just_placed(self):
+        from vttt.render import BG, Renderer
+        app = self.app
+        app.mode_key, app.settings["opponent"] = "blind", "local"
+        app.start_game()
+        for a in (0, 4, 8):
+            app.make_move(a)
+        renderer = Renderer()
+
+        def drawn():
+            frame = renderer.draw(app)
+            cells = []
+            for a in range(9):
+                x, y = renderer.origin(a + 1)
+                tile = frame.crop((x + 40, y + 40, x + 200, y + 180)).getcolors(10 ** 6)
+                if any(color != Image.new("RGB", (1, 1), BG).getpixel((0, 0)) for _, color in tile):
+                    cells.append(a)
+            return cells
+
+        from PIL import Image
+        self.assertEqual(drawn(), [8])  # reveal window: newest piece only
+        app.blind_visible = False
+        self.assertEqual(drawn(), [])
+        app.go("final_board")
+        self.assertEqual(drawn(), [0, 4, 8])
+
     def test_ai_turn_blocks_human_clicks_and_stale_future_is_ignored(self):
         app = self.app
         app.settings["human_first"] = False
+        app.rps_human_first = False  # AI won rock-paper-scissors
         app.start_game()
         self.press(1)
         self.assertEqual(app.game.moves, 0)
@@ -297,11 +611,11 @@ class AITests(unittest.TestCase):
         win = Game("original")
         for a in (0, 3, 1, 4):
             win.play(a)
-        self.assertEqual(self.ai.select_action(win), 2)
+        self.assertEqual(self.ai.select_action(win, "hard"), 2)
         block = Game("original")
         for a in (0, 4, 1):
             block.play(a)
-        self.assertEqual(self.ai.select_action(block), 2)
+        self.assertEqual(self.ai.select_action(block, "hard"), 2)
 
     def test_vanishing_does_not_block_a_threat_that_disappears(self):
         game = Game()
@@ -309,7 +623,18 @@ class AITests(unittest.TestCase):
             game.play(a)
         # Opponent's apparent 0,1,_ threat disappears when their oldest 0 vanishes.
         # Current player can win immediately at 5, which must take priority.
-        self.assertEqual(self.ai.select_action(game), 5)
+        self.assertEqual(self.ai.select_action(game, "hard"), 5)
+
+    def test_difficulty_changes_how_often_an_open_win_is_taken(self):
+        win = Game("original")
+        for a in (0, 3, 1, 4):
+            win.play(a)
+        ai = GameAI(rng=random.Random(5))
+        taken = {level: sum(ai.select_action(win, level) == 2 for _ in range(200))
+                 for level in ("easy", "normal", "hard")}
+        self.assertEqual(taken["hard"], 200)
+        self.assertGreater(taken["normal"], taken["easy"])
+        self.assertLess(taken["easy"], 170)
 
     def test_search_returns_legal_moves_for_all_modes(self):
         for mode in MODES:

@@ -2,6 +2,8 @@
 
 from concurrent.futures import ThreadPoolExecutor
 import logging
+import math
+import random
 import threading
 import time
 
@@ -12,6 +14,13 @@ from .rules import Game, MODES
 from .ui_render import SHOP_THEMES
 
 LOG = logging.getLogger(__name__)
+FLASH_SECONDS = 0.15  # pressed-button highlight
+DROP_SECONDS = 0.35  # gravity pieces sliding down a row (distinct from the vanish fade)
+FADE_SECONDS = 1.0
+DUEL_STEP = 1.0  # 2-player RPS: "3", "2", "1", then a one-second "눌러!" window
+DUEL_TOP = {3: 0, 2: 1, 1: 2}  # top player sees the row upside down: their left is button 3
+DUEL_BOTTOM = {7: 0, 8: 1, 9: 2}  # scissors, rock, paper
+FIXED_DIFFICULTY = {"original": "normal"}  # modes without a difficulty screen
 MODE_BUTTONS = {4: "blind", 5: "vanishing", 6: "gravity", 7: "switch_nine", 8: "switch_one", 9: "original"}
 
 
@@ -28,6 +37,10 @@ class Application:
         self.game, self.human_mark = None, 1
         self.running, self.closed = True, False
         self.revision, self.rendered_revision = 0, -1
+        self.content_revision, self.presented_content = 0, -1
+        self.ai_ready_at = 0.0
+        self.fade, self.fade_step = None, 0
+        self.motion, self.motion_frame = None, -1  # (start, drop_end, fade_end, fall_end)
         self.accept_after = float("-inf")
         self.notice, self.notice_until = self.profile.warning, None
         self.return_screen, self.help_index = "menu", 0
@@ -38,11 +51,20 @@ class Application:
         self.ai_after = 0
         self.connectivity = ConnectivityUI(self)
         self.pending_difficulty = self.settings["difficulty"]
-        self.rps_choice = None
+        self.rps_choice, self.rps_spin, self.rps_until = None, 0, 0.0
+        self.rps_human_first = True
+        self.flash, self.flash_until = (), 0.0
+        self.duel_start, self.duel_phase = 0.0, -1
+        self.duel_picks, self.duel_reason = {"top": None, "bottom": None}, ""
         self.shop_page, self.shop_selected = 0, None
         self.input_epoch, self.presented_epoch = 0, -1
 
     def touch(self):
+        self.revision += 1
+        self.content_revision = self.revision
+
+    def animate(self):
+        """Redraw an animation frame without discarding clicks made while it was showing."""
         self.revision += 1
 
     def go(self, screen):
@@ -66,9 +88,6 @@ class Application:
             self.settings[key] = not self.settings[key]
         elif key == "opponent":
             self.settings[key] = "local" if self.settings[key] == "ai" else "ai"
-        elif key == "difficulty":
-            choices = ("easy", "normal", "hard")
-            self.settings[key] = choices[(choices.index(self.settings[key]) + 1) % 3]
         self.save_settings()
         self.touch()
 
@@ -83,14 +102,54 @@ class Application:
     def start_game(self):
         self.cancel_ai()
         self.game = Game(self.mode_key, self.config["max_moves"])
-        self.human_mark = 1 if self.settings["human_first"] else -1
+        forced = self.settings["human_first"] and self.settings["opponent"] == "ai"
+        self.human_mark = 1 if forced or self.rps_human_first else -1
         self.local_first_mark = self.human_mark
         self.recorded, self.last_coins = False, 0
         self.blind_visible = True
         self.reveal_until = self.result_at = None
         self.reveal_pending = self.result_pending = False
+        self.fade = self.motion = None
         self.ai_after = self.clock() + 0.3
         self.go("game")
+
+    def picks_difficulty(self):
+        """Difficulty screen only against the AI, and not for modes with a fixed level."""
+        return self.settings["opponent"] == "ai" and self.mode_key not in FIXED_DIFFICULTY
+
+    def begin_match(self):
+        """Two players always play RPS; against the AI the 선공 setting can skip it."""
+        if self.settings["opponent"] == "local":
+            self.start_duel(self.clock())
+            self.go("duel")
+        elif self.settings["human_first"]:
+            self.start_game()
+        else:
+            self.rps_choice = None
+            self.go("rps")
+
+    def start_duel(self, at):
+        self.duel_start, self.duel_phase = at, -1
+        self.duel_picks, self.duel_reason = {"top": None, "bottom": None}, ""
+
+    def duel_window_open(self):
+        return self.screen == "duel" and self.duel_phase == 3
+
+    def resolve_duel(self):
+        top, bottom = self.duel_picks["top"], self.duel_picks["bottom"]
+        if top == bottom:  # same hand, or nobody pressed
+            self.message("둘 다 안 눌렀어요 · 다시!" if top is None else "비겼어요 · 다시!")
+            self.start_duel(self.clock() + 1.2)  # keep both hands visible a moment
+            self.touch()
+            return
+        if top is None or bottom is None:
+            bottom_wins = top is None
+            self.duel_reason = ("2P" if top is None else "1P") + "가 늦었어요"
+        else:
+            bottom_wins = (bottom - top) % 3 == 1
+        self.rps_human_first = bottom_wins
+        self.rps_until = self.clock() + 1.5
+        self.go("duel_result")
 
     def is_ai_turn(self):
         return bool(self.game and not self.game.done and self.settings["opponent"] == "ai"
@@ -100,7 +159,7 @@ class Application:
         if self.game.winner == 0:
             return "무승부"
         if self.settings["opponent"] == "ai":
-            return "사람 승리!" if self.game.winner == self.human_mark else "AI 승리!"
+            return "이겼어요!" if self.game.winner == self.human_mark else "AI가 이겼어요"
         return ("1P" if self.game.winner == self.local_first_mark else "2P") + (" O 승리!" if self.game.winner == 1 else " X 승리!")
 
     def make_move(self, action):
@@ -110,10 +169,23 @@ class Application:
             self.message(str(exc))
             return False
         self.notice, self.notice_until = "", None
+        event = self.game.last_event
+        if event and not self.game.done:
+            self.message({"clear": "아래줄 삭제!", "switch": "소유권 반전!" if self.game.mode.switch == "nine" else "위치 교환!"}[event])
+        elif self.game.switch_pair():
+            self.message("다음 수 후 위치 교환!")
         self.blind_visible = True
         self.reveal_pending = self.game.mode.blind and not self.game.done
         self.reveal_until = None
         self.ai_after = self.clock() + 0.3
+        self.ai_ready_at = self.clock() + self.config["ai_move_seconds"]
+        now, game = self.clock(), self.game
+        drop_end = now + (DROP_SECONDS if game.drops else 0)
+        fade_end = drop_end + (FADE_SECONDS if game.vanished else 0)
+        fall_end = fade_end + (DROP_SECONDS if game.fell else 0)
+        self.motion = (now, drop_end, fade_end, fall_end) if fall_end > now else None
+        self.motion_frame = -1
+        self.fade, self.fade_step = ((*game.vanished, drop_end) if game.vanished else None), 0
         self.touch()
         if self.game.done:
             self.result_pending = True
@@ -138,6 +210,12 @@ class Application:
         if event.timestamp and event.timestamp <= self.accept_after:
             return
         button = event.button
+        if 1 <= button <= 9:
+            cells = (button,)
+            if self.duel_window_open():  # light the whole row so the hand chosen stays secret
+                cells = (1, 2, 3) if button <= 3 else (7, 8, 9) if button >= 7 else cells
+            self.flash, self.flash_until = cells, self.clock() + FLASH_SECONDS
+            self.animate()
         if self.connectivity.handle(event):
             return
         if event.kind == "long" and button == 5:
@@ -170,7 +248,10 @@ class Application:
             elif button in MODE_BUTTONS:
                 self.mode_key = MODE_BUTTONS[button]
                 self.pending_difficulty = self.settings["difficulty"]
-                self.go("setup")
+                if not self.picks_difficulty():
+                    self.begin_match()
+                else:
+                    self.go("setup")
         elif self.screen == "setup":
             if button == 1:
                 self.go("mode")
@@ -186,24 +267,31 @@ class Application:
                 else:
                     self.settings["difficulty"] = self.pending_difficulty
                     self.save_settings()
-                    self.rps_choice = None
-                    self.go("rps")
+                    self.begin_match()
         elif self.screen == "rps":
             if button == 1:
-                self.go("setup")
+                self.go("setup" if self.picks_difficulty() else "mode")
             elif button in (7, 8, 9):
-                import random
                 human = button - 7  # scissors, rock, paper
                 other = random.randrange(3)
                 self.rps_choice = other
                 if human == other:
+                    self.rps_until = self.clock() + 1.2  # hold the AI's hand, then spin again
                     self.message("무승부 · 다시 선택해주세요")
                 else:
-                    self.settings["human_first"] = (human - other) % 3 == 1
-                    self.save_settings()
+                    self.rps_human_first = (human - other) % 3 == 1
                     self.rps_until = self.clock() + 1.2
                     self.go("rps_result")
-        elif self.screen == "rps_result":
+        elif self.screen == "duel":
+            if button == 4:
+                self.go("setup" if self.picks_difficulty() else "mode")
+            elif self.duel_window_open():
+                for row, hands in (("top", DUEL_TOP), ("bottom", DUEL_BOTTOM)):
+                    if button in hands and self.duel_picks[row] is None:
+                        self.duel_picks[row] = hands[button]
+                if None not in self.duel_picks.values():
+                    self.resolve_duel()
+        elif self.screen in ("rps_result", "duel_result"):
             pass
         elif self.screen == "game":
             if not self.game.done and not self.is_ai_turn():
@@ -252,8 +340,8 @@ class Application:
         elif self.screen == "settings":
             if button == 1:
                 self.go("menu")
-            elif button in (4, 5, 6, 7):
-                self.toggle({4: "opponent", 5: "difficulty", 6: "show_lifetime", 7: "human_first"}[button])
+            elif button in (4, 6, 7):
+                self.toggle({4: "opponent", 6: "show_lifetime", 7: "human_first"}[button])
             elif button == 8:
                 self.open_help("settings")
             elif button == 9:
@@ -284,25 +372,63 @@ class Application:
     def tick(self):
         now = self.clock()
         self.connectivity.tick()
-        if self.screen == "rps_result" and now >= self.rps_until:
+        if self.flash and now >= self.flash_until:
+            self.flash = ()
+            self.animate()
+        if self.screen in ("rps_result", "duel_result") and now >= self.rps_until:
             self.start_game()
+        if self.screen == "duel":
+            phase = min(4, math.floor((now - self.duel_start) / DUEL_STEP))
+            if phase != self.duel_phase:
+                if phase == 0:
+                    self.duel_picks = {"top": None, "bottom": None}
+                self.duel_phase = phase
+                self.animate()
+                if phase == 4:
+                    self.resolve_duel()
+        if self.screen == "rps":
+            if self.rps_choice is not None and now >= self.rps_until:
+                self.rps_choice = None
+                self.touch()
+            step = int(now * 5) % 3  # scissors -> rock -> paper every 0.2 s
+            if self.rps_choice is None and step != self.rps_spin:
+                self.rps_spin = step
+                self.animate()
         if self.notice_until is not None and now >= self.notice_until:
             self.notice, self.notice_until = "", None
             self.touch()
         if self.screen != "game":
             return
+        if self.motion:
+            if now >= self.motion[3]:
+                self.motion = None
+                self.animate()
+            else:
+                frame = int((now - self.motion[0]) / 0.05)
+                if frame != self.motion_frame:
+                    self.motion_frame = frame
+                    self.animate()
+        if self.fade:
+            step = min(5, max(0, int((now - self.fade[2]) / 0.2)))  # five frames over one second
+            if step != self.fade_step:
+                self.fade_step = step
+                if step == 5:
+                    self.fade = None
+                self.animate()
         if self.game.done:
             if self.result_at is not None and now >= self.result_at:
                 self.go("result")
             return
-        if self.reveal_until is not None:
-            if now < self.reveal_until:
-                return
+        if self.reveal_until is not None and now >= self.reveal_until:
             self.reveal_until = None
             self.blind_visible = False
             self.touch()
-        if self.is_ai_turn() and not self.reveal_pending:
+        # The AI may think during the pause, but its move lands only after it.
+        waiting = self.reveal_pending or self.reveal_until is not None or now < self.ai_ready_at
+        if self.is_ai_turn():
             if self.future is not None and self.future.done():
+                if waiting:
+                    return
                 task, self.future = self.future, None
                 try:
                     generation, action = task.result()
@@ -316,7 +442,7 @@ class Application:
             elif self.future is None and now >= self.ai_after:
                 snapshot, generation = self.game.clone(), self.generation
                 cancel = self.cancel_event = threading.Event()
-                difficulty = self.settings["difficulty"]
+                difficulty = FIXED_DIFFICULTY.get(self.game.mode_key, self.settings["difficulty"])
 
                 def compute():
                     return generation, self.ai.select_action(snapshot, difficulty, cancel)
@@ -331,9 +457,11 @@ class Application:
         self.backend.show(self.renderer.draw(self))
         now = self.clock()
         # Ignore stale clicks collected during the previous screen's SPI transfer.
-        if self.presented_epoch != self.input_epoch or self.screen not in ("wifi_scan", "wifi_password"):
+        if self.presented_epoch != self.input_epoch or (
+                self.screen not in ("wifi_scan", "wifi_password") and self.content_revision != self.presented_content):
             self.accept_after = now
             self.presented_epoch = self.input_epoch
+        self.presented_content = self.content_revision
         self.rendered_revision = self.revision
         if self.screen == "game":
             if self.reveal_pending:
@@ -347,9 +475,9 @@ class Application:
         try:
             while self.running:
                 for event in self.backend.poll():
-                    old_revision = self.revision
+                    old_revision = self.content_revision
                     self.handle(event)
-                    if self.revision != old_revision or not self.running:
+                    if self.content_revision != old_revision or not self.running:
                         break
                 if not self.running:
                     break

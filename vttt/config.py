@@ -49,6 +49,8 @@ def runtime_config(path=None):
         raise ValueError("난이도 설정을 확인하세요")
     if not 9 <= cfg["max_moves"] <= 10000 or not 0.3 <= cfg["blind_reveal_seconds"] <= 10:
         raise ValueError("착수 제한/블라인드 공개 시간을 확인하세요")
+    if not 0 <= cfg["ai_move_seconds"] <= 10:
+        raise ValueError("AI 착수 대기 시간을 확인하세요")
     for key in ("model_npz", "model_pt", "profile"):
         cfg[key] = str((ROOT / cfg[key]).resolve())
     return cfg

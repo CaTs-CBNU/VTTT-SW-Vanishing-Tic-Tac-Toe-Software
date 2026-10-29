@@ -47,16 +47,41 @@ def draw_setup(r, canvas, app):
 
 def draw_rps(r, canvas, app):
     image_tile(r, canvas, 1, 'go_back_button')
-    image_tile(r, canvas, 2, ('sissor_button', 'rock_button', 'paper_button')[app.rps_choice if app.rps_choice is not None else 1])
+    image_tile(r, canvas, 2, ('sissor_button', 'rock_button', 'paper_button')[app.rps_spin if app.rps_choice is None else app.rps_choice])
     for b, name in ((4, 'sissor_text'), (5, 'rock_text'), (6, 'paper_text'),
                     (7, 'sissor_button'), (8, 'rock_button'), (9, 'paper_button')):
         image_tile(r, canvas, b, name)
     if app.screen == 'rps_result':
-        r.strip(canvas, 2, '1P 선공' if app.settings['opponent'] == 'local' and app.settings['human_first'] else
+        r.strip(canvas, 2, '1P 선공' if app.settings['opponent'] == 'local' and app.rps_human_first else
                 '2P 선공' if app.settings['opponent'] == 'local' else
-                '사람 선공' if app.settings['human_first'] else 'AI 선공')
+                '내가 먼저 둬요' if app.rps_human_first else 'AI가 먼저 둬요')
     elif app.notice:
         r.strip(canvas, 2, app.notice)
+
+
+def draw_duel(r, canvas, app):
+    """2-player RPS: 2P on the top row (drawn upside down for them), 1P on the bottom row."""
+    hands = ('sissor_button', 'rock_button', 'paper_button')
+    show = app.screen == 'duel_result' or app.duel_phase < 0  # reveal only after both chose
+    picks = app.duel_picks
+    for b, hand in ((3, 0), (2, 1), (1, 2)):
+        canvas.paste(r.art[hands[hand]].rotate(180), r.origin(b))
+        if show and picks['top'] == hand:
+            x, y = r.origin(b)
+            ImageDraw.Draw(canvas).rectangle((x+3, y+3, x+236, y+236), outline='#5579FF', width=5)
+    for b, hand in ((7, 0), (8, 1), (9, 2)):
+        image_tile(r, canvas, b, hands[hand], show and picks['bottom'] == hand)
+    image_tile(r, canvas, 4, 'go_back_button')
+    x, y = r.origin(5)
+    d = ImageDraw.Draw(canvas)
+    if app.screen == 'duel_result':
+        r.tile(canvas, 5, '1P 먼저!' if app.rps_human_first else '2P 먼저!', (app.duel_reason,) if app.duel_reason else ())
+    elif app.duel_phase < 0:
+        r.text(d, (x + 120, y + 120), app.notice or '준비', 30)
+    else:
+        r.text(d, (x + 120, y + 112), ('3', '2', '1', '눌러!', '')[app.duel_phase],
+               110 if app.duel_phase < 3 else 64, '#E5383B' if app.duel_phase == 3 else '#45494C')
+    r.tile(canvas, 6, '가위바위보', ('위: 2P', '아래: 1P', '눌러! 때 1초 안에'))
 
 
 def draw_connectivity(r, canvas, app):
