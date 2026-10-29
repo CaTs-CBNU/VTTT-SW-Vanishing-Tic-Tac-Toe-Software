@@ -209,3 +209,6 @@ __marimo__/
 
 # 맥 캐시파일
 *.md
+
+# 프로필 설정
+runtime/profile.txt
