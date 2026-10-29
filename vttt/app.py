@@ -19,6 +19,7 @@ DROP_SECONDS = 0.35  # gravity pieces sliding down a row (distinct from the vani
 FADE_SECONDS = 1.0
 SWITCH_HOLD_SECONDS = 1.0  # begins after the placed-piece frame reaches the displays
 SWITCH_FLIP_SECONDS = 0.5
+GRAVITY_WARNING_SECONDS = 2.5
 DUEL_STEP = 1.0  # 2-player RPS: "3", "2", "1", then a one-second "눌러!" window
 DUEL_TOP = {3: 0, 2: 1, 1: 2}  # top player sees the row upside down: their left is button 3
 DUEL_BOTTOM = {7: 0, 8: 1, 9: 2}  # scissors, rock, paper
@@ -44,6 +45,7 @@ class Application:
         self.fade, self.fade_step = None, 0
         self.motion, self.motion_frame = None, -1  # (start, drop_end, fade_end, fall_end)
         self.nine_switch = None
+        self.gravity_warning = None
         self.accept_after = float("-inf")
         self.notice, self.notice_until = self.profile.warning, None
         self.return_screen, self.help_index = "menu", 0
@@ -116,6 +118,7 @@ class Application:
         self.reveal_pending = self.result_pending = False
         self.fade = self.motion = None
         self.nine_switch = None
+        self.gravity_warning = None
         self.ai_after = self.clock() + 0.3
         self.go("game")
 
@@ -169,15 +172,35 @@ class Application:
             return "이겼어요!" if self.game.winner == self.human_mark else "AI가 이겼어요"
         return "승리!"
 
+    def gravity_warning_waiting(self):
+        warning = self.gravity_warning
+        return warning is not None and (warning["shown_at"] is None or
+                self.clock() - warning["shown_at"] < GRAVITY_WARNING_SECONDS)
+
     def make_move(self, action):
         if self.nine_switch is not None:
             return False
+        if self.gravity_warning_waiting():
+            if self.gravity_warning["action"] is not None:
+                return False
+            try:
+                self.game.landing(action)
+            except ValueError as exc:
+                self.message(str(exc))
+                return False
+            # Remember the first click without erasing the warning early.
+            self.gravity_warning["action"] = action
+            return True
+        if self.gravity_warning is not None and self.gravity_warning["action"] is not None:
+            action = self.gravity_warning["action"]
         try:
             self.game.play(action)
         except ValueError as exc:
             self.message(str(exc))
             return False
         self.notice, self.notice_until = "", None
+        self.gravity_warning = ({"shown_at": None, "action": None}
+                                if not self.game.done and self.game.clear_due() else None)
         event = self.game.last_event
         if event == "switch" and self.game.mode.switch == "nine":
             # Rules and AI retain an atomic move; presentation first shows the
@@ -206,7 +229,8 @@ class Application:
             if not self.recorded:
                 self.recorded = True
                 try:
-                    self.last_coins = self.profile.record(self.game, self.settings["opponent"], self.human_mark)
+                    difficulty = FIXED_DIFFICULTY.get(self.game.mode_key, self.settings["difficulty"])
+                    self.last_coins = self.profile.record(self.game, self.settings["opponent"], self.human_mark, difficulty)
                 except OSError:
                     LOG.exception("Cannot save match result")
                     self.message("결과 저장 실패")
@@ -356,9 +380,6 @@ class Application:
         elif self.screen == "settings":
             if button == 1:
                 self.go("menu")
-            elif button == 2:
-                self.save_settings()
-                self.message("설정 저장 완료")
             elif button in (4, 6, 7):
                 self.toggle({4: "opponent", 6: "show_lifetime", 7: "human_first"}[button])
             elif button == 8:
@@ -380,6 +401,8 @@ class Application:
                 self.touch()
 
     def resume(self):
+        if self.gravity_warning is not None:
+            self.gravity_warning["shown_at"] = None
         if self.game.mode.blind:
             # Pausing must not grant a fresh reveal of the hidden board.
             self.blind_visible = False
@@ -463,6 +486,11 @@ class Application:
             if self.result_at is not None and now >= self.result_at:
                 self.go("result")
             return
+        if self.gravity_warning_waiting():
+            return
+        if self.gravity_warning is not None and self.gravity_warning["action"] is not None:
+            self.make_move(self.gravity_warning["action"])
+            return
         if self.reveal_until is not None and now >= self.reveal_until:
             self.reveal_until = None
             self.blind_visible = False
@@ -508,6 +536,8 @@ class Application:
         self.presented_content = self.content_revision
         self.rendered_revision = self.revision
         if self.screen == "game":
+            if self.gravity_warning is not None and self.gravity_warning["shown_at"] is None:
+                self.gravity_warning["shown_at"] = now
             if self.nine_switch is not None:
                 if self.nine_switch["shown_at"] is None:
                     self.nine_switch["shown_at"] = now

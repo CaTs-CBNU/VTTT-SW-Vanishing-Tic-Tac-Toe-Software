@@ -453,7 +453,9 @@ class AppTests(unittest.TestCase):
         self.press(7)
         self.assertTrue(app.settings["human_first"])
         self.press(2)
-        self.assertEqual(app.notice, "설정 저장 완료")
+        self.assertEqual(app.notice, "")  # settings save automatically; no save button
+        saved = json.loads(Path(app.profile.path).read_text(encoding="utf-8"))
+        self.assertEqual(saved["settings"]["opponent"], "local")
         app.begin_match()
         self.assertEqual(app.screen, "duel")
         app.start_game()
@@ -608,6 +610,9 @@ class AppTests(unittest.TestCase):
         app.mode_key = "gravity"
         app.start_game()
         for button in (5, 5, 4, 4, 1, 2, 9, 6):
+            if app.gravity_warning_waiting():
+                app.present()
+                self.now[0] += 3
             app.make_move(button - 1)
         view = Renderer().motion_view
         start = self.now[0]
@@ -625,6 +630,63 @@ class AppTests(unittest.TestCase):
         app.tick()
         board, _, movers = view(app)
         self.assertEqual((movers, board), ([], app.game.board))
+
+    def test_gravity_warning_holds_after_display_and_queues_only_first_click(self):
+        from vttt.app import GRAVITY_WARNING_SECONDS
+        app = self.app
+        app.settings["opponent"] = "local"
+        app.mode_key = "gravity"
+        app.start_game()
+        for action in (0, 1, 2, 0, 1):
+            app.make_move(action)
+        snapshot = app.game.key()
+        self.press(3)
+        self.press(1)
+        self.assertEqual(app.gravity_warning["action"], 2)
+        self.now[0] += 20
+        app.tick()
+        self.assertEqual(app.game.key(), snapshot)
+        app.present()  # the timer starts after the full screen has been sent
+        self.now[0] += GRAVITY_WARNING_SECONDS - 0.01
+        app.tick()
+        self.assertEqual(app.game.key(), snapshot)
+        self.now[0] += 0.02
+        app.tick()
+        self.assertEqual((app.game.moves, app.game.last_event), (6, "clear"))
+        self.assertEqual(app.game.last_action % 3, 2)
+        self.assertIsNone(app.gravity_warning)
+
+    def test_gravity_warning_stops_ai_and_resets_when_restarting(self):
+        app = self.app
+        app.settings.update(opponent="ai", human_first=True)
+        app.mode_key = "gravity"
+        app.start_game()
+        for action in (0, 1, 2, 0, 1):
+            app.make_move(action)
+        self.assertTrue(app.is_ai_turn())
+        self.now[0] += 20
+        app.tick()
+        self.assertIsNone(app.future)
+        app.present()
+        self.now[0] += 2.4
+        app.tick()
+        self.assertIsNone(app.future)
+        self.assertEqual(app.game.moves, 5)
+        app.start_game()
+        self.assertIsNone(app.gravity_warning)
+
+    def test_gravity_keeps_queued_column_when_another_click_arrives_at_timeout(self):
+        app = self.app
+        app.settings["opponent"] = "local"
+        app.mode_key = "gravity"
+        app.start_game()
+        for action in (0, 1, 2, 0, 1):
+            app.make_move(action)
+        app.present()
+        self.press(3)
+        self.now[0] += 3
+        self.press(1)  # event polling happens before tick; keep the first choice
+        self.assertEqual((app.game.moves, app.game.last_action % 3), (6, 2))
 
     def test_blind_draws_only_the_piece_just_placed(self):
         from vttt.render import BG, Renderer
@@ -688,6 +750,41 @@ class AppTests(unittest.TestCase):
         restored = Profile(profile.path, self.app.config)
         self.assertEqual(restored.data["coins"], 5)
         self.assertEqual(restored.data["theme"], "fishcat")
+
+    def test_win_rewards_follow_played_difficulty_including_fixed_modes(self):
+        app = self.app
+        app.settings.update(opponent="ai", human_first=True)
+        total = app.profile.data["coins"]
+        for mode in ("vanishing", "original"):
+            for difficulty, reward in (("easy", 3), ("normal", 5), ("hard", 10)):
+                with self.subTest(mode=mode, difficulty=difficulty):
+                    app.mode_key = mode
+                    app.settings["difficulty"] = difficulty
+                    app.start_game()
+                    for action in (0, 3, 1, 4, 2):
+                        app.make_move(action)
+                    expected = 5 if mode == "original" else reward
+                    total += expected
+                    self.assertEqual(app.last_coins, expected)
+                    self.assertEqual(app.profile.data["coins"], total)
+                    saved = json.loads(Path(app.profile.path).read_text(encoding="utf-8"))
+                    self.assertEqual(saved["coins"], total)
+
+    def test_losses_always_reward_one_and_draws_stay_two(self):
+        app = self.app
+        app.settings.update(opponent="ai", human_first=False)
+        app.rps_human_first = False
+        for difficulty in ("easy", "normal", "hard"):
+            app.mode_key = "original"
+            app.settings["difficulty"] = difficulty
+            app.start_game()
+            for action in (0, 3, 1, 4, 2):
+                app.make_move(action)
+            self.assertEqual(app.last_coins, 1)
+            app.start_game()
+            for action in (0, 1, 2, 4, 3, 5, 7, 6, 8):
+                app.make_move(action)
+            self.assertEqual(app.last_coins, 2)
 
     def test_model_ai_completes_a_controller_match_in_every_mode(self):
         app = self.app

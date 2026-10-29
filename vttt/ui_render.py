@@ -25,7 +25,7 @@ def draw_grid(canvas):
 
 def draw_settings(r, canvas, app):
     s = app.settings
-    for button, name in ((1, 'go_back_button'), (2, 'settings/save_setting_button'),
+    for button, name in ((1, 'go_back_button'),
                          (4, 'settings/game_mode'), (5, 'settings/setting_middle'),
                          (6, 'settings/show_the_life'), (7, 'settings/AI_turn_order'),
                          (8, 'settings/show_rules'), (9, 'settings/check_device')):
@@ -55,11 +55,11 @@ def draw_result(r, canvas, app):
                        (460, 460, -1), (520, 540, 1)):
         r.mark(canvas, x, y, mark, 'default')
     if app.game.winner:
-        r.mark(canvas, 480, 30, app.game.winner, app.profile.data['theme'])
+        r.mark(canvas, 480, -10, app.game.winner, app.profile.data['theme'], size=190)
     else:
         d.rectangle((484, 4, 715, 235), fill='#545656')
         r.text(d, (600, 120), '무승부', 40, '#FFFFFF')
-    r.result_message(canvas, (360, 330), app, 32)
+    r.result_message(canvas, (360, 330), app, 32, icon_size=72)
     r.text(d, (360, 380), f'{app.game.moves}회 착수', 23)
     r.text(d, (360, 415), f'골드 +{app.last_coins}', 24, '#D6AD24')
     draw_grid(canvas)

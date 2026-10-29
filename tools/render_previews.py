@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from vttt.ai import GameAI
-from vttt.app import Application
+from vttt.app import Application, GRAVITY_WARNING_SECONDS
 from vttt.backends import HeadlessBackend
 from vttt.config import runtime_config
 from vttt.render import Renderer
@@ -76,7 +76,8 @@ def render(output, font=None):
             app.renderer.draw(app).save(output / "blind-reveal.png")
             app.blind_visible = False
             app.renderer.draw(app).save(output / "blind-hidden.png")
-            for name, mode, moves, switch_turns in (("gravity-clear", "gravity", (0, 1, 2, 0, 1, 2), None),
+            for name, mode, moves, switch_turns in (("gravity-warning", "gravity", (0, 1, 2, 0, 1), None),
+                                                    ("gravity-clear", "gravity", (0, 1, 2, 0, 1, 2), None),
                                                     ("switch-one-warning", "switch_one", (0, 3, 1, 7), (5,)),
                                                     ("switch-one", "switch_one", (0, 8, 1, 7), (4,)),
                                                     ("switch-nine-warning", "switch_nine", (0, 3, 1, 4), (5,)),
@@ -85,6 +86,8 @@ def render(output, font=None):
                 app.start_game()
                 app.game = Game(mode, cfg["max_moves"], switch_turns=switch_turns)
                 for a in moves:
+                    if app.gravity_warning is not None:
+                        app.gravity_warning["shown_at"] = app.clock() - GRAVITY_WARNING_SECONDS - 0.01
                     app.make_move(a)
                 if app.nine_switch is not None:
                     app.renderer.draw(app).save(output / (name + "-placed.png"))

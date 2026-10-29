@@ -8,6 +8,7 @@ from pathlib import Path
 THEMES = {"default": ("기본", 0), "fishcat": ("고양이", 20),
           "squirrel": ("다람쥐", 20), "xmas": ("크리스마스", 30),
           "chiikawa1": ("치이카와 1", 20), "chiikawa2": ("치이카와 2", 20)}
+WIN_REWARDS = {"easy": 3, "normal": 5, "hard": 10}
 
 
 class Profile:
@@ -66,7 +67,7 @@ class Profile:
         self.save()
         return THEMES[theme][0] + " 선택 완료"
 
-    def record(self, game, opponent, human_mark):
+    def record(self, game, opponent, human_mark, difficulty=None):
         if not game.done:
             raise ValueError("Only finished games can be recorded")
         stats = self.data["stats"]
@@ -79,7 +80,7 @@ class Profile:
             coins = 2
         elif game.winner == human_mark:
             stats["wins"] += 1
-            coins = 5
+            coins = WIN_REWARDS[difficulty or self.data["settings"]["difficulty"]]
         else:
             stats["losses"] += 1
             coins = 1

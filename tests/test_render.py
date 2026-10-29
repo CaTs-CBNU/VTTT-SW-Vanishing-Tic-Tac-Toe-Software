@@ -68,6 +68,7 @@ class PieceRenderingTests(unittest.TestCase):
                     with patch.object(self.renderer, "piece_text", wraps=self.renderer.piece_text) as label:
                         self.renderer.draw(self.app)
                     self.assertEqual(label.call_args.args[2:5], (winner, theme, "승리!"))
+                    self.assertEqual(label.call_args.kwargs["icon_size"], 72)
 
     def test_local_turn_uses_current_piece_at_text_size(self):
         self.app.profile.data["theme"] = "squirrel"
@@ -76,6 +77,48 @@ class PieceRenderingTests(unittest.TestCase):
             with patch.object(self.renderer, "piece_text", wraps=self.renderer.piece_text) as label:
                 self.renderer.draw(self.app)
             self.assertEqual(label.call_args.args[2:6], (mark, "squirrel", "차례", 19))
+            self.assertEqual(label.call_args.kwargs["icon_size"], 48)
+
+    def test_help_page_indicator_is_on_display_eight_and_rule_status_is_removed(self):
+        self.app.go("help")
+        for index in range(7):
+            self.app.help_index = index
+            with patch.object(self.renderer, "tile", wraps=self.renderer.tile) as tiles:
+                self.renderer.draw(self.app)
+            titles = {call.args[2]: call.args[1] for call in tiles.call_args_list}
+            self.assertEqual(titles["도움말"], 8)
+            self.assertNotIn("규칙 상태", titles)
+            self.assertNotIn(2, titles.values())
+
+    def test_gravity_warns_on_all_three_bottom_tiles_only_before_a_clear(self):
+        from PIL import ImageColor
+        from vttt.render import RED
+        self.app.mode_key = "gravity"
+        self.app.start_game()
+        for action in (0, 1, 2, 0):
+            self.app.make_move(action)
+        before = self.renderer.draw(self.app)
+        self.app.make_move(1)
+        with patch.object(self.renderer, "strip", wraps=self.renderer.strip) as strips:
+            warning = self.renderer.draw(self.app)
+        labels = {call.args[1] for call in strips.call_args_list if call.args[2] == "이제 지워집니다!"}
+        self.assertEqual(labels, {7, 8, 9})
+        self.app.present()
+        self.app.gravity_warning["shown_at"] -= 3
+        self.app.make_move(2)
+        after = self.renderer.draw(self.app)
+        for button in (7, 8, 9):
+            x, y = self.renderer.origin(button)
+            point = (x + 120, y + 4)
+            self.assertNotEqual(before.getpixel(point), ImageColor.getrgb(RED))
+            self.assertEqual(warning.getpixel(point), ImageColor.getrgb(RED))
+            self.assertNotEqual(after.getpixel(point), ImageColor.getrgb(RED))
+        # One continuous outer frame, without red dividers between the tiles.
+        for x in (0, 239, 240, 479, 480, 719):
+            self.assertEqual(warning.getpixel((x, 480)), ImageColor.getrgb(RED))
+            self.assertEqual(warning.getpixel((x, 719)), ImageColor.getrgb(RED))
+        for x in (239, 240, 479, 480):
+            self.assertNotEqual(warning.getpixel((x, 600)), ImageColor.getrgb(RED))
 
     def test_duel_result_labels_follow_the_assigned_marks(self):
         self.app.profile.data["theme"] = "fishcat"
