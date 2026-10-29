@@ -241,3 +241,7 @@ environment:
   --human_first \
   --search_depth 6
 ```
+### 개발용 시뮬레이터 실행 명령어
+```
+~ % python -m vttt --simulate
+```
