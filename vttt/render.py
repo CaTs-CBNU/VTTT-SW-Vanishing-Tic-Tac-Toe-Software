@@ -7,7 +7,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 from .config import ROOT
 from .profile import THEMES
 from .rules import MODES
-from .ui_render import image_tile, draw_setup, draw_rps, draw_duel, draw_shop, draw_connectivity
+from .ui_render import image_tile, draw_setup, draw_rps, draw_duel, draw_shop, draw_settings, draw_result, draw_connectivity
 
 BG, INK, BLUE, PINK, GREEN, ORANGE, RED = "#F7F3EF", "#45494C", "#5579FF", "#E965B9", "#45AD76", "#F0A030", "#E5383B"
 ASSETS = ROOT / "src/static/images"
@@ -23,6 +23,7 @@ def countdown_color(left, total):
 class Renderer:
     def __init__(self, font_path=None):
         candidates = [font_path, os.environ.get("VTTT_FONT_PATH"),
+                      ROOT / "src/static/fonts/potato.ttf",
                       "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
                       "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
                       "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
@@ -38,6 +39,10 @@ class Renderer:
         for path in (ASSETS / "ui").glob("*.jpeg"):
             with Image.open(path) as img:
                 self.art[path.stem] = img.convert("RGB").resize((240, 240), Image.Resampling.LANCZOS)
+        for group in ("result", "settings", "shop"):
+            for path in (ASSETS / group).glob("*.jpeg"):
+                with Image.open(path) as img:
+                    self.art[f"{group}/{path.stem}"] = img.convert("RGB").resize((240, 240), Image.Resampling.LANCZOS)
         for page in ("start", "menu", "mode"):
             canvas = Image.new("RGB", (720, 720), BG)
             for i in range(1, 10):
@@ -105,6 +110,9 @@ class Renderer:
             ImageDraw.Draw(canvas).rounded_rectangle((x + 3, y + 3, x + 236, y + 236), radius=14, outline=BLUE, width=8)
         if app.duel_window_open():  # "눌러!": red frame around the whole board
             ImageDraw.Draw(canvas).rectangle((0, 0, 719, 719), outline=RED, width=16)
+        if app.screen == "game" and app.game.nine_switch_due():
+            self.strip(canvas, 2, "이제 바뀝니다!", RED)
+            ImageDraw.Draw(canvas).rectangle((0, 0, 719, 719), outline=RED, width=12)
         return canvas
 
     def compose(self, app):
@@ -134,29 +142,14 @@ class Renderer:
             self.tile(canvas, 6, "다시 시작", ("같은 설정으로", "새 대국 시작"))
             self.tile(canvas, 8, "종료", ("프로그램 종료", "라즈베리파이는 유지"), accent=PINK)
         elif screen == "result":
-            title = app.result_title()
-            self.tile(canvas, 2, "대국 결과", (mode.title,))
-            self.tile(canvas, 4, "다시 대국", ("같은 모드와 상대",))
-            self.tile(canvas, 5, title, (f"{app.game.moves}회 착수", f"코인 +{app.last_coins}"), accent=GREEN, selected=True)
-            self.tile(canvas, 6, "모드 변경", ("다른 게임 선택",))
-            self.tile(canvas, 7, "최종 게임판", ("눌러서 다시 보기",))
-            self.tile(canvas, 8, "메인 메뉴", ("상점 · 설정 · 점수",))
-            reason = "착수 횟수 제한" if app.game.reason == "limit" else "판이 가득 찼습니다" if app.game.reason == "full" else "세 칸 연결 성공"
-            self.tile(canvas, 9, "종료 사유", (reason,))
+            draw_result(self, canvas, app)
         elif screen == "final_board":
             self.game(canvas, app, reveal=True)
             self.strip(canvas, 5, "아무 칸: 결과로")
         elif screen in ("shop", "themes"):
             draw_shop(self, canvas, app)
         elif screen == "settings":
-            self.tile(canvas, 1, "돌아가기", ("메인 메뉴",))
-            self.tile(canvas, 2, "설정", ("누르면 바로 저장",))
-            self.tile(canvas, 4, "기본 상대", ("AI" if s["opponent"] == "ai" else "2인 대국",))
-            self.tile(canvas, 6, "말 수명 표시", ("켜짐" if s["show_lifetime"] else "꺼짐",), footer="배니싱 계열 숫자")
-            self.tile(canvas, 7, "선공", ("켜짐" if s["human_first"] else "꺼짐",),
-                      footer="AI 대국만 · 2인은 가위바위보")
-            self.tile(canvas, 8, "게임 설명", ("조작과 규칙 보기",))
-            self.tile(canvas, 9, "기기 확인", ("버튼 · LCD 번호", "눌러서 진단 시작"))
+            draw_settings(self, canvas, app)
         elif screen == "scores":
             stats = app.profile.data["stats"]
             self.tile(canvas, 1, "돌아가기", ("메인 메뉴",))

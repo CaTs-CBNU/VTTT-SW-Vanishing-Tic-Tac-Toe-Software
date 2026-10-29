@@ -15,24 +15,91 @@ def image_tile(renderer, canvas, button, name, selected=False):
         ImageDraw.Draw(canvas).rectangle((x+3, y+3, x+236, y+236), outline='#5579FF', width=5)
 
 
+def draw_grid(canvas):
+    d = ImageDraw.Draw(canvas)
+    for edge in (240, 480):
+        d.line((edge, 0, edge, 719), fill='#061B29', width=6)
+        d.line((0, edge, 719, edge), fill='#061B29', width=6)
+    d.rectangle((0, 0, 719, 719), outline='#061B29', width=6)
+
+
+def draw_settings(r, canvas, app):
+    s = app.settings
+    for button, name in ((1, 'go_back_button'), (2, 'settings/save_setting_button'),
+                         (4, 'settings/game_mode'), (5, 'settings/setting_middle'),
+                         (6, 'settings/show_the_life'), (7, 'settings/AI_turn_order'),
+                         (8, 'settings/show_rules'), (9, 'settings/check_device')):
+        image_tile(r, canvas, button, name)
+    d = ImageDraw.Draw(canvas)
+    r.text(d, (120, 385), 'AI' if s['opponent'] == 'ai' else '2인 대국', 34)
+    r.text(d, (600, 385), '켜짐' if s['show_lifetime'] else '꺼짐', 34)
+    local = s['opponent'] == 'local'
+    r.text(d, (120, 625), '가위바위보' if local else ('켜짐' if s['human_first'] else '꺼짐'), 30)
+    if local:
+        x, y = r.origin(7)
+        tile = canvas.crop((x, y, x + 240, y + 240)).convert('L').convert('RGB')
+        canvas.paste(Image.blend(tile, Image.new('RGB', tile.size, '#989898'), 0.55), (x, y))
+    draw_grid(canvas)
+
+
+def draw_result(r, canvas, app):
+    for button, name in ((2, 'result_title'), (4, 're_game_button'),
+                         (6, 'change_mode_button'), (7, 'check_the_board'), (8, 'go_to_mainmenu')):
+        image_tile(r, canvas, button, 'result/' + name)
+    d = ImageDraw.Draw(canvas)
+    for button in (1, 3, 9):
+        x, y = r.origin(button)
+        d.rectangle((x, y, x + 239, y + 239), fill='#545656')
+    # Corner tiles show the O/X motif from the supplied layout.
+    for x, y, mark in ((-20, -10, 1), (40, 50, -1),
+                       (460, 460, -1), (520, 540, 1)):
+        r.mark(canvas, x, y, mark, 'default')
+    if app.game.winner:
+        r.mark(canvas, 480, 30, app.game.winner, app.profile.data['theme'])
+    else:
+        d.rectangle((484, 4, 715, 235), fill='#545656')
+        r.text(d, (600, 120), '무승부', 40, '#FFFFFF')
+    r.text(d, (360, 330), app.result_title(), 32)
+    r.text(d, (360, 380), f'{app.game.moves}회 착수', 23)
+    r.text(d, (360, 415), f'골드 +{app.last_coins}', 24, '#D6AD24')
+    draw_grid(canvas)
+
+
 def draw_shop(r, canvas, app):
     image_tile(r, canvas, 1, 'go_back_button')
-    # Existing menu artwork supplies the shop heading.
-    canvas.paste(r.pages['menu'].crop((240, 0, 480, 240)), (240, 0))
-    r.tile(canvas, 3, '골드', (str(app.profile.data['coins']),), accent='#D6AD24')
+    d = ImageDraw.Draw(canvas)
+    d.rectangle((240, 0, 479, 239), fill='#545656')
+    d.text((360, 120), '상점', font=r.font(90), anchor='mm', fill='#FFCC25',
+           stroke_width=7, stroke_fill='#FFFFFF')
+    image_tile(r, canvas, 3, 'shop/shop_gold_status')
+    r.text(ImageDraw.Draw(canvas), (600, 170), str(app.profile.data['coins']), 36, '#D6AD24')
     for b, key in zip((4, 5, 6), [SHOP_THEMES[(app.shop_page+i)%len(SHOP_THEMES)] for i in range(3)]):
-        name, price = THEMES[key]
-        r.tile(canvas, b, name, selected=app.shop_selected == key,
-               footer='보유' if key in app.profile.data['owned'] else f'{price} 골드')
         x, y = r.origin(b)
-        for mark, dx in (('o', 20), ('x', 126)):
-            icon = r.icons[key, mark].resize((94, 94))
-            canvas.paste(icon, (x+dx, y+82))
-    r.tile(canvas, 7, '◀', ('이전 테마',))
+        for mark, dx, dy in (('o', 16, 12), ('x', 124, 12), ('x', 16, 108), ('o', 124, 108)):
+            icon = r.icons[key, mark].resize((100, 100), Image.Resampling.LANCZOS)
+            canvas.paste(icon, (x+dx, y+dy))
+        if app.shop_selected == key:
+            d = ImageDraw.Draw(canvas)
+            # Yellow dashed frame around the selected theme.
+            for offset in range(8, 232, 30):
+                d.line((x+offset, y+6, x+min(offset+14, 232), y+6), fill='#FFCC25', width=10)
+                d.line((x+offset, y+234, x+min(offset+14, 232), y+234), fill='#FFCC25', width=10)
+                d.line((x+6, y+offset, x+6, y+min(offset+14, 232)), fill='#FFCC25', width=10)
+                d.line((x+234, y+offset, x+234, y+min(offset+14, 232)), fill='#FFCC25', width=10)
+            r.text(d, (x+120, y+216), THEMES[key][0], 27, '#061B29')
+    image_tile(r, canvas, 7, 'shop/shop_left_button')
+    image_tile(r, canvas, 9, 'shop/shop_right_button')
     key = app.shop_selected
-    title = ('적용' if key in app.profile.data['owned'] else f'{THEMES[key][1]}골드 구매') if key else '테마 선택'
-    r.tile(canvas, 8, title, (THEMES[key][0] if key else '위에서 골라주세요',), selected=bool(key))
-    r.tile(canvas, 9, '▶', (f'{app.shop_page+1} / {len(SHOP_THEMES)}', '다음 테마'))
+    d = ImageDraw.Draw(canvas)
+    if key:
+        owned = key in app.profile.data['owned']
+        r.text(d, (360, 555), '보유 중' if owned else f'{THEMES[key][1]}골드', 37, '#061B29')
+        r.text(d, (360, 635), '적용' if owned else '구매', 66, '#FFCC25')
+    else:
+        r.text(d, (360, 590), '테마 선택', 35)
+    if app.notice:
+        r.strip(canvas, 2, app.notice, '#E965B9')
+    draw_grid(canvas)
 
 
 def draw_setup(r, canvas, app):

@@ -43,7 +43,12 @@ def render(output, font=None):
             app.shop_page = 4
             app.go("themes")
             app.renderer.draw(app).save(output / "themes-page2.png")
+            app.shop_page, app.shop_selected = 0, "squirrel"
+            app.go("shop")
+            app.renderer.draw(app).save(output / "shop-selected.png")
             app.settings["opponent"] = "local"
+            app.go("settings")
+            app.renderer.draw(app).save(output / "settings-local.png")
             app.start_game()
             for a in (0, 3, 1, 4):
                 app.make_move(a)
@@ -65,6 +70,7 @@ def render(output, font=None):
             for name, mode, moves, switch_turns in (("gravity-clear", "gravity", (0, 1, 2, 0, 1, 2), None),
                                                     ("switch-one-warning", "switch_one", (0, 3, 1, 7), (5,)),
                                                     ("switch-one", "switch_one", (0, 8, 1, 7), (4,)),
+                                                    ("switch-nine-warning", "switch_nine", (0, 3, 1, 4), (5,)),
                                                     ("switch-nine", "switch_nine", (0, 3, 1, 4, 8), (5,))):
                 app.mode_key = mode
                 app.start_game()

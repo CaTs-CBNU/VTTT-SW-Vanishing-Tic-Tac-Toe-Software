@@ -89,6 +89,10 @@ class Game:
         """Gravity deletes the bottom row right before every Nth move, so that move's piece survives."""
         return bool(self.mode.clear_every) and (self.moves + 1) % self.mode.clear_every == 0
 
+    def nine_switch_due(self) -> bool:
+        """Warn throughout the turn before all pieces change owner."""
+        return not self.done and self.mode.switch == "nine" and self.moves + 1 in self.switch_turns
+
     def landing(self, action: int) -> int:
         if not isinstance(action, int) or not 0 <= action < 9 or self.done:
             raise ValueError("진행 중인 게임에서 1~9번 칸을 선택하세요")

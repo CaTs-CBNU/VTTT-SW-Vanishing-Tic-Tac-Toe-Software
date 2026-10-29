@@ -382,6 +382,10 @@ class AppTests(unittest.TestCase):
         self.press(1)
         self.assertEqual(app.screen, "result")
         self.press(4)
+        self.assertEqual(app.screen, "duel")
+        app.rps_until = self.now[0]
+        app.go("duel_result")
+        app.tick()
         self.assertEqual(app.game.moves, 0)
 
     def test_blind_timer_begins_after_display_and_pause_cannot_reveal(self):
@@ -439,6 +443,53 @@ class AppTests(unittest.TestCase):
         self.press(5)
         self.press(8)
         self.assertEqual(app.screen, "rps")
+
+    def test_local_first_setting_is_disabled_and_every_restart_uses_rps(self):
+        app = self.app
+        app.settings.update(opponent="ai", human_first=True)
+        app.go("settings")
+        self.press(4)
+        self.assertEqual(app.settings["opponent"], "local")
+        self.press(7)
+        self.assertTrue(app.settings["human_first"])
+        self.press(2)
+        self.assertEqual(app.notice, "설정 저장 완료")
+        app.begin_match()
+        self.assertEqual(app.screen, "duel")
+        app.start_game()
+        app.go("pause")
+        self.press(6)
+        self.assertEqual(app.screen, "duel")
+        app.go("settings")
+        self.press(4)
+        self.press(7)
+        self.assertFalse(app.settings["human_first"])
+
+    def test_nine_switch_warning_persists_until_switch_and_clears_on_win(self):
+        from vttt.render import Renderer, RED
+        from PIL import ImageColor
+        app = self.app
+        app.mode_key, app.settings["opponent"] = "switch_nine", "local"
+        app.start_game()
+        app.game = Game("switch_nine", switch_turns=(5,))
+        r = Renderer()
+        for a in (0, 3, 1):
+            app.make_move(a)
+        self.assertFalse(app.game.nine_switch_due())
+        app.make_move(4)
+        self.assertTrue(app.game.nine_switch_due())
+        self.now[0] += 5
+        app.tick()
+        self.assertEqual(r.draw(app).getpixel((0, 0)), ImageColor.getrgb(RED))
+        app.make_move(8)
+        self.assertEqual(app.game.last_event, "switch")
+        self.assertFalse(app.game.nine_switch_due())
+        self.assertNotEqual(r.draw(app).getpixel((0, 0)), ImageColor.getrgb(RED))
+        app.game = Game("switch_nine", switch_turns=(5, 6))
+        for a in (0, 3, 1, 4, 2):
+            app.make_move(a)
+        self.assertTrue(app.game.done)
+        self.assertFalse(app.game.nine_switch_due())
 
     def test_ai_move_waits_two_seconds_however_fast_it_thinks(self):
         app = self.app

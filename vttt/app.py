@@ -84,6 +84,8 @@ class Application:
             self.message("설정을 저장하지 못했습니다")
 
     def toggle(self, key):
+        if key == "human_first" and self.settings["opponent"] == "local":
+            return
         if key in ("show_lifetime", "human_first"):
             self.settings[key] = not self.settings[key]
         elif key == "opponent":
@@ -119,6 +121,7 @@ class Application:
 
     def begin_match(self):
         """Two players always play RPS; against the AI the 선공 setting can skip it."""
+        self.cancel_ai()
         if self.settings["opponent"] == "local":
             self.start_duel(self.clock())
             self.go("duel")
@@ -304,12 +307,12 @@ class Application:
             elif button == 5:
                 self.resume()
             elif button == 6:
-                self.start_game()
+                self.begin_match()
             elif button == 8:
                 self.running = False
         elif self.screen == "result":
             if button == 4:
-                self.start_game()
+                self.begin_match()
             elif button == 6:
                 self.go("mode")
             elif button == 7:
@@ -340,6 +343,9 @@ class Application:
         elif self.screen == "settings":
             if button == 1:
                 self.go("menu")
+            elif button == 2:
+                self.save_settings()
+                self.message("설정 저장 완료")
             elif button in (4, 6, 7):
                 self.toggle({4: "opponent", 6: "show_lifetime", 7: "human_first"}[button])
             elif button == 8:
