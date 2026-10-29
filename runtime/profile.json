@@ -1,25 +1,25 @@
 {
-  "coins": 952,
-  "theme": "fishcat",
+  "coins": 0,
+  "theme": "default",
   "owned": [
-    "chiikawa1",
-    "chiikawa2",
-    "default",
-    "fishcat",
-    "squirrel",
-    "xmas"
+    "default"
   ],
   "settings": {
     "opponent": "ai",
-    "difficulty": "hard",
-    "human_first": true,
+    "difficulty": "normal",
+    "human_first": false,
     "show_lifetime": true
   },
   "stats": {
-    "played": 33,
-    "wins": 7,
-    "losses": 22,
+    "played": 0,
+    "wins": 0,
+    "losses": 0,
     "draws": 0,
-    "local": 4
-  }
+    "local": 0,
+    "lan_played": 0,
+    "lan_wins": 0,
+    "lan_losses": 0,
+    "lan_draws": 0
+  },
+  "recorded_lan_matches": []
 }
