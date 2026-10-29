@@ -7,7 +7,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 from .config import ROOT
 from .profile import THEMES
 from .rules import MODES
-from .ui_render import image_tile, draw_setup, draw_rps, draw_duel, draw_shop, draw_settings, draw_result, draw_connectivity
+from .ui_render import image_tile, draw_setup, draw_rps, draw_duel, draw_shop, draw_settings, draw_result, draw_scores, draw_help, draw_connectivity
 
 BG, INK, BLUE, PINK, GREEN, ORANGE, RED = "#F7F3EF", "#45494C", "#5579FF", "#E965B9", "#45AD76", "#F0A030", "#E5383B"
 ASSETS = ROOT / "src/static/images"
@@ -153,6 +153,15 @@ class Renderer:
         screen = app.screen
         if screen in ("start", "menu", "mode"):
             canvas = self.pages[screen].copy()
+            if screen == "mode":
+                theme = app.profile.data["theme"]
+                d = ImageDraw.Draw(canvas)
+                d.rectangle((480, 0, 719, 239), fill=BG)
+                self.text(d, (600, 35), "테마 선택", 31, BLUE)
+                for mark, x in (("o", 494), ("x", 614)):
+                    icon = ImageOps.contain(self.icons[theme, mark], (92, 110), Image.Resampling.LANCZOS)
+                    canvas.paste(icon, (x + (92 - icon.width) // 2, 68 + (110 - icon.height) // 2), icon)
+                self.text(d, (600, 211), THEMES[theme][0], 24)
             if app.notice:
                 self.strip(canvas, 8 if screen == "start" else 2, app.notice)
             return canvas
@@ -185,27 +194,9 @@ class Renderer:
         elif screen == "settings":
             draw_settings(self, canvas, app)
         elif screen == "scores":
-            stats = app.profile.data["stats"]
-            self.tile(canvas, 1, "돌아가기", ("메인 메뉴",))
-            self.tile(canvas, 2, "플레이 기록", (f"총 {stats['played']}회",))
-            for b, title, value in ((4, "AI 상대 승리", stats["wins"]), (5, "AI 상대 패배", stats["losses"]),
-                                    (6, "AI 상대 무승부", stats["draws"]), (7, "2인 대국", stats["local"])):
-                self.tile(canvas, b, title, (str(value) + "회",))
-            self.tile(canvas, 8, "보유 코인", (str(app.profile.data["coins"]),))
-            self.tile(canvas, 9, "저장 안내", ("이 기기에 저장됩니다",))
+            draw_scores(self, canvas, app)
         elif screen == "help":
-            self.tile(canvas, 1, "돌아가기", ("이전 화면",))
-            self.tile(canvas, 8, "도움말", (f"{app.help_index + 1} / 7",))
-            if app.help_index == 0:
-                self.tile(canvas, 4, "착수", ("놓고 싶은 칸을", "한 번 눌렀다 떼세요"))
-                self.tile(canvas, 5, "일시정지", ("가운데 5번 버튼을", "1.3초 길게 누르세요"))
-                self.tile(canvas, 6, "말 수명", ("1: 다음 내 착수에 제거", "2·3: 그만큼 더 유지"))
-            else:
-                rule = list(MODES.values())[app.help_index - 1]
-                self.tile(canvas, 4, rule.title, (rule.description[0],))
-                self.tile(canvas, 5, "진행 규칙", rule.description[1:])
-            self.tile(canvas, 7, "이전 설명", ("눌러서 이동",))
-            self.tile(canvas, 9, "다음 설명", ("눌러서 이동",))
+            draw_help(self, canvas, app)
         elif screen == "diagnostic":
             for i in range(1, 10):
                 self.tile(canvas, i, str(i), ("버튼 / LCD", "입력 확인" if app.diagnostic_button == i else "이 칸을 눌러보세요"),

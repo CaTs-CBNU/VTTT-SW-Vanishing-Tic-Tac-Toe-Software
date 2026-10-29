@@ -2,6 +2,7 @@
 
 from PIL import Image, ImageDraw
 from .profile import THEMES
+from .rules import MODES
 from .connectivity_ui import SYMBOLS, NETWORK_SLOTS
 
 BG = '#F7F3EF'
@@ -23,6 +24,38 @@ def draw_grid(canvas):
     d.rectangle((0, 0, 719, 719), outline='#061B29', width=6)
 
 
+def draw_scores(r, canvas, app):
+    stats = app.profile.data['stats']
+    image_tile(r, canvas, 1, 'go_back_button')
+    d = ImageDraw.Draw(canvas)
+    d.rectangle((240, 0, 479, 239), fill='#545656')
+    for cy, label in ((77, '대국'), (163, '기록')):
+        d.text((360, cy), label, font=r.font(68), anchor='mm', fill='#FFFFFF')
+
+    def metric(button, title, value, footer, color, background=BG):
+        x, y = r.origin(button)
+        d.rectangle((x, y, x + 239, y + 239), fill=background)
+        r.text(d, (x + 120, y + 39), title, 29, '#45494C')
+        d.line((x + 28, y + 74, x + 212, y + 74), fill='#D9D3CC', width=2)
+        r.text(d, (x + 120, y + 132), value, 76, color, max_width=198)
+        r.text(d, (x + 120, y + 201), footer, 20, '#5B5B5B')
+
+    metric(3, '총 대국', f"{stats['played']:,}", '누적 플레이 횟수', '#3156C4', '#EDF0FC')
+    metric(4, '승리', f"{stats['wins']:,}", 'AI를 이긴 횟수', '#24764B')
+    metric(5, '패배', f"{stats['losses']:,}", 'AI에게 진 횟수', '#B73159')
+    metric(6, '무승부', f"{stats['draws']:,}", 'AI와 비긴 횟수', '#3156C4')
+    metric(7, '2인 대국', f"{stats['local']:,}", '함께 플레이한 횟수', '#7043A0')
+    metric(8, '보유 골드', f"{app.profile.data['coins']:,}", '상점에서 사용하세요', '#946100', '#FFF3CE')
+    ai_total = stats['wins'] + stats['losses'] + stats['draws']
+    rate = stats['wins'] / ai_total if ai_total else 0
+    metric(9, 'AI 상대 승률', f'{rate:.0%}' if ai_total else '-',
+           f'AI 대국 {ai_total:,}회 기준' if ai_total else '아직 대국 기록이 없어요', '#24764B')
+    d.rounded_rectangle((508, 702, 692, 710), radius=4, fill='#DDE6DF')
+    if rate:
+        d.rounded_rectangle((508, 702, 508 + round(184 * rate), 710), radius=4, fill='#24764B')
+    draw_grid(canvas)
+
+
 def draw_settings(r, canvas, app):
     s = app.settings
     for button, name in ((1, 'go_back_button'),
@@ -39,6 +72,69 @@ def draw_settings(r, canvas, app):
         x, y = r.origin(7)
         tile = canvas.crop((x, y, x + 240, y + 240)).convert('L').convert('RGB')
         canvas.paste(Image.blend(tile, Image.new('RGB', tile.size, '#989898'), 0.55), (x, y))
+    draw_grid(canvas)
+
+
+def draw_help(r, canvas, app):
+    image_tile(r, canvas, 1, 'go_back_button')
+    d = ImageDraw.Draw(canvas)
+    index = app.help_index
+    rule = list(MODES.values())[index - 1] if index else None
+    d.rectangle((240, 0, 479, 239), fill='#545656')
+    r.text(d, (360, 78), rule.title if rule else '게임 설명', 42, '#FFFFFF')
+    r.text(d, (360, 153), '게임 규칙' if rule else '기본 조작', 30, '#FFCC25')
+    r.text(d, (600, 36), '승리 목표', 28)
+    r.text(d, (600, 105), '3', 88, '#24764B')
+    r.text(d, (600, 174), '가로 / 세로 / 대각선', 20)
+    r.text(d, (600, 207), '세 칸을 이으세요', 23)
+
+    pieces = ('말 개수', ('한 사람당', '말은 3개'))
+    pages = {
+        'vanishing': (pieces,
+            ('말이 사라질 때', ('네 번째 말을 두면', '가장 오래된 말이', '사라집니다')),
+            ('승리 조건', ('말이 사라진 뒤', '세 칸을 이으면', '승리합니다'))),
+        'original': (
+            ('착수 방법', ('빈 칸을 골라', '번갈아 두세요')),
+            ('승리 조건', ('가로 / 세로 / 대각선', '세 칸을 이으면 승리')),
+            ('무승부', ('빈 칸이 없으면', '무승부입니다'))),
+        'blind': (pieces,
+            ('말 공개', ('방금 둔 말만', f"{app.config['blind_reveal_seconds']:g}초 동안 보여요", '나머지 말은 숨겨요')),
+            ('기억하세요', ('말의 위치를', '기억하며 두세요', '세 칸을 이으면 승리'))),
+        'gravity': (
+            ('말의 이동', ('선택한 세로줄의', '맨 아래로 떨어져요', '한 사람당 말은 3개')),
+            ('아래줄 삭제', ('6수마다 아래줄 삭제', '빨간 테두리가 뜨면', '삭제를 준비하세요')),
+            ('연속 낙하', ('말이 사라지면', '위쪽 말도 떨어져요', '낙하 후 연결을 확인'))),
+        'switch_one': (pieces,
+            ('자리 교환', ('무작위 턴에', '같은 수명의 두 말이', '서로 자리를 바꿔요')),
+            ('교환 예고', ('주황색 테두리로', '바뀔 말을 알려줘요', '세 칸을 이으면 승리'))),
+        'switch_nine': (pieces,
+            ('말 전체 반전', ('무작위 턴에', '모든 말의 주인이', '한꺼번에 바뀝니다')),
+            ('전환 예고', ('빨간 테두리 확인', '내 말이 놓인 뒤', '모든 말이 뒤집혀요'))),
+    }
+    cards = pages[rule.key] if rule else (
+        ('말 놓기', ('원하는 칸을', '한 번 눌렀다 떼세요')),
+        ('일시정지', ('가운데 5번 버튼을', '1.3초 길게 누르세요')),
+        ('말 수명', ('1: 다음 내 착수에', '사라지는 말입니다', '2와 3은 더 유지돼요')))
+    for number, ((title, lines), color) in enumerate(zip(cards, ('#3156C4', '#946100', '#24764B')), 1):
+        x, y = r.origin(number + 3)
+        d.ellipse((x + 14, y + 16, x + 42, y + 44), fill=color)
+        r.text(d, (x + 28, y + 30), str(number), 18, '#FFFFFF')
+        r.text(d, (x + 127, y + 47), title, 28, color, max_width=178)
+        d.line((x + 24, y + 80, x + 216, y + 80), fill='#D9D3CC', width=2)
+        for line_index, line in enumerate(lines):
+            cy = y + (125 if len(lines) == 2 else 112) + line_index * 37
+            r.text(d, (x + 120, cy), line, 25, max_width=204)
+
+    for button, art, title in ((7, 'shop/shop_left_button', '이전 설명'),
+                               (9, 'shop/shop_right_button', '다음 설명')):
+        image_tile(r, canvas, button, art)
+        x, y = r.origin(button)
+        r.text(d, (x + 120, y + 213), title, 26)
+    r.text(d, (360, 524), '게임 설명', 29)
+    r.text(d, (360, 610), f'{index + 1} / {len(MODES) + 1}', 52, '#3156C4')
+    for page in range(len(MODES) + 1):
+        cx = 285 + page * 25
+        d.ellipse((cx - 5, 690, cx + 5, 700), fill='#3156C4' if page == index else '#D9D3CC')
     draw_grid(canvas)
 
 
@@ -172,10 +268,10 @@ def draw_connectivity(r, canvas, app):
         art(1, 'go_back_button'); art(3, 'network_setting_button')
         if screen == 'communication':
             art(2, 'multiplay_title')
-            art(4, 'local_multi_button', ui.mode == 'local')
+            art(4, 'local_multi_button')
             art(5, 'multiplay_icon')
-            art(6, 'online_multi_button', ui.mode == 'online')
-            art(7, 'local_multi_info'); art(8, 'select_button'); art(9, 'online_multi_info')
+            art(6, 'online_multi_button')
+            art(7, 'local_multi_info'); art(9, 'online_multi_info')
             r.strip(canvas, 5, 'UI 데모 · 실제 통신 준비 중')
         else:
             art(2, ui.mode + '_multi_title')

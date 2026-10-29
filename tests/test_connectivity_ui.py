@@ -38,8 +38,10 @@ class OfflineUITests(unittest.TestCase):
         self.press(8); self.press(4); self.assertEqual(self.app.screen,'scores')
         self.press(1); self.press(6); self.assertEqual(self.app.screen,'settings')
         self.press(1); self.press(8); self.assertEqual(self.app.screen,'communication')
+        self.press(8)
+        self.assertEqual(self.app.screen, 'communication')
         for b, mode in ((4,'local'),(6,'online')):
-            self.press(b); self.press(8)
+            self.press(b)
             self.assertEqual((self.app.screen,self.ui.mode),('connection',mode))
             for action, screen in ((4,'room_create'),(5,'room_search')):
                 self.press(action); self.assertEqual(self.app.screen,screen)

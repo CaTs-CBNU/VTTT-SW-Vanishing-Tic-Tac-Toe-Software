@@ -80,15 +80,19 @@ class PieceRenderingTests(unittest.TestCase):
             self.assertEqual(label.call_args.kwargs["icon_size"], 48)
 
     def test_help_page_indicator_is_on_display_eight_and_rule_status_is_removed(self):
+        from PIL import ImageChops
         self.app.go("help")
         for index in range(7):
             self.app.help_index = index
-            with patch.object(self.renderer, "tile", wraps=self.renderer.tile) as tiles:
-                self.renderer.draw(self.app)
-            titles = {call.args[2]: call.args[1] for call in tiles.call_args_list}
-            self.assertEqual(titles["도움말"], 8)
-            self.assertNotIn("규칙 상태", titles)
-            self.assertNotIn(2, titles.values())
+            with patch.object(self.renderer, "text", wraps=self.renderer.text) as labels:
+                image = self.renderer.draw(self.app)
+            pages = [call for call in labels.call_args_list if call.args[2] == f'{index + 1} / 7']
+            self.assertEqual(len(pages), 1)
+            self.assertEqual(pages[0].args[1], (360, 610))
+            self.assertFalse(any('규칙 상태' in call.args[2] or '확정 규칙' in call.args[2]
+                                 for call in labels.call_args_list))
+            self.assertIsNone(ImageChops.difference(image.crop((6, 6, 234, 234)),
+                             self.renderer.art['go_back_button'].crop((6, 6, 234, 234))).getbbox())
 
     def test_gravity_warns_on_all_three_bottom_tiles_only_before_a_clear(self):
         from PIL import ImageColor
@@ -129,6 +133,28 @@ class PieceRenderingTests(unittest.TestCase):
         top, bottom = labels.call_args_list[-2:]
         self.assertEqual((top.args[2], top.kwargs["prefix"]), (1, "위: "))
         self.assertEqual((bottom.args[2], bottom.kwargs["prefix"]), (-1, "아래: "))
+
+    def test_mode_theme_tile_updates_after_applying_a_theme(self):
+        from PIL import ImageChops
+        from vttt.buttons import ButtonEvent
+        app = self.app
+        app.go("mode")
+        before = self.renderer.draw(app)
+        app.handle(ButtonEvent(3, "short"))
+        self.assertEqual(app.screen, "themes")
+        app.profile.data["owned"].append("squirrel")
+        app.shop_page = 0
+        app.handle(ButtonEvent(5, "short"))
+        app.handle(ButtonEvent(8, "short"))
+        self.assertEqual(app.profile.data["theme"], "squirrel")
+        app.handle(ButtonEvent(1, "short"))
+        self.assertEqual(app.screen, "mode")
+        app.flash = ()
+        after = self.renderer.draw(app)
+        self.assertIsNotNone(ImageChops.difference(before.crop((480, 0, 720, 240)),
+                                                  after.crop((480, 0, 720, 240))).getbbox())
+        self.assertIsNone(ImageChops.difference(before.crop((0, 240, 720, 720)),
+                                               after.crop((0, 240, 720, 720))).getbbox())
 
 
 if __name__ == "__main__":

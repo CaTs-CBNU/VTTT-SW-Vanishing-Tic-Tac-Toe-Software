@@ -1,6 +1,6 @@
 {
-  "coins": 941,
-  "theme": "chiikawa1",
+  "coins": 952,
+  "theme": "fishcat",
   "owned": [
     "chiikawa1",
     "chiikawa2",
@@ -11,14 +11,14 @@
   ],
   "settings": {
     "opponent": "ai",
-    "difficulty": "easy",
+    "difficulty": "hard",
     "human_first": true,
     "show_lifetime": true
   },
   "stats": {
-    "played": 26,
-    "wins": 6,
-    "losses": 16,
+    "played": 33,
+    "wins": 7,
+    "losses": 22,
     "draws": 0,
     "local": 4
   }

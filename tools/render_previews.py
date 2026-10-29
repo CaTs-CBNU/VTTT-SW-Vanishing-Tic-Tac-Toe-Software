@@ -26,6 +26,12 @@ def render(output, font=None):
             for screen in ("start", "menu", "mode", "setup", "rps", "shop", "settings", "scores", "help", "diagnostic"):
                 app.go(screen)
                 app.renderer.draw(app).save(output / (screen + ".png"))
+            stats, coins = app.profile.data['stats'], app.profile.data['coins']
+            app.profile.data['stats'] = dict(played=128, wins=72, losses=24, draws=12, local=20)
+            app.profile.data['coins'] = 1240
+            app.go('scores')
+            app.renderer.draw(app).save(output / 'scores-sample.png')
+            app.profile.data['stats'], app.profile.data['coins'] = stats, coins
             ui = app.connectivity
             for screen in ("communication", "connection", "room_create", "room_search"):
                 for connection in ("local", "online"):
@@ -62,6 +68,8 @@ def render(output, font=None):
             app.renderer.draw(app).save(output / "result.png")
             app.profile.data["theme"] = "squirrel"
             app.renderer.draw(app).save(output / "result-themed.png")
+            app.go("mode")
+            app.renderer.draw(app).save(output / "mode-themed.png")
             app.go("game")
             app.renderer.draw(app).save(output / "winning-board-themed.png")
             app.start_game()

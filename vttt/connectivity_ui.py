@@ -110,8 +110,7 @@ class ConnectivityUI:
             elif b == 3: self.open_wifi(); self.scan()
             elif b in (4, 6):
                 self.mode = 'local' if b == 4 else 'online'
-                app.touch()
-            elif b == 8: app.go('connection')
+                app.go('connection')
         elif screen in ('connection', 'room_create', 'room_search'):
             if b == 1:
                 app.go('communication' if screen == 'connection' else 'connection')
