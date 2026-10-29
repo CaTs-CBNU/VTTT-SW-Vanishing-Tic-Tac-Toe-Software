@@ -147,6 +147,9 @@ class Renderer:
             for button in (7, 8, 9):
                 self.strip(canvas, button, "이제 지워집니다!", RED)
             ImageDraw.Draw(canvas).rectangle((0, 480, 719, 719), outline=RED, width=12)
+        if app.lan.reconnecting:
+            from .lan_ui import draw_reconnect
+            draw_reconnect(self, canvas, app)
         return canvas
 
     def compose(self, app):
@@ -168,7 +171,10 @@ class Renderer:
         canvas = Image.new("RGB", (720, 720), BG)
         s = app.settings
         mode = MODES[app.mode_key]
-        if screen == "setup":
+        if screen.startswith("lan_"):
+            from .lan_ui import draw_lan
+            draw_lan(self, canvas, app)
+        elif screen == "setup":
             draw_setup(self, canvas, app)
         elif screen in ("duel", "duel_result"):
             draw_duel(self, canvas, app)
@@ -308,7 +314,10 @@ class Renderer:
                 elif app.notice:
                     self.text(d, (x + 120, y + 201), app.notice, 19)
                 else:
-                    status = ("AI 차례" if app.is_ai_turn() else "내 차례") if app.settings["opponent"] == "ai" else "차례"
+                    if app.lan.active:
+                        status = "내 차례" if game.turn == app.human_mark else "상대 차례"
+                    else:
+                        status = ("AI 차례" if app.is_ai_turn() else "내 차례") if app.settings["opponent"] == "ai" else "차례"
                     self.piece_text(canvas, (x + 120, y + 201), game.turn, app.profile.data["theme"], status, 19, icon_size=48)
                 self.text(d, (x + 120, y + 231), "5 길게: 일시정지", 12, "#76716D")
             elif button == 1:

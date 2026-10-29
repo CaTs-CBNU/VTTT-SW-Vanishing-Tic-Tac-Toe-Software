@@ -29,7 +29,7 @@ def draw_scores(r, canvas, app):
     image_tile(r, canvas, 1, 'go_back_button')
     d = ImageDraw.Draw(canvas)
     d.rectangle((240, 0, 479, 239), fill='#545656')
-    for cy, label in ((77, '대국'), (163, '기록')):
+    for cy, label in ((77, '통신' if app.score_network else '대국'), (163, '기록')):
         d.text((360, cy), label, font=r.font(68), anchor='mm', fill='#FFFFFF')
 
     def metric(button, title, value, footer, color, background=BG):
@@ -40,16 +40,24 @@ def draw_scores(r, canvas, app):
         r.text(d, (x + 120, y + 132), value, 76, color, max_width=198)
         r.text(d, (x + 120, y + 201), footer, 20, '#5B5B5B')
 
-    metric(3, '총 대국', f"{stats['played']:,}", '누적 플레이 횟수', '#3156C4', '#EDF0FC')
-    metric(4, '승리', f"{stats['wins']:,}", 'AI를 이긴 횟수', '#24764B')
-    metric(5, '패배', f"{stats['losses']:,}", 'AI에게 진 횟수', '#B73159')
-    metric(6, '무승부', f"{stats['draws']:,}", 'AI와 비긴 횟수', '#3156C4')
-    metric(7, '2인 대국', f"{stats['local']:,}", '함께 플레이한 횟수', '#7043A0')
+    network = app.score_network
+    wins, losses, draws = (stats.get('lan_' + key, 0) if network else stats[key]
+                           for key in ('wins', 'losses', 'draws'))
+    scope = '통신' if network else 'AI'
+    metric(3, '통신 대국' if network else '총 대국',
+           f"{stats.get('lan_played', 0) if network else stats['played']:,}",
+           '누적 플레이 횟수', '#3156C4', '#EDF0FC')
+    metric(4, '승리', f'{wins:,}', scope + ' 상대 승리', '#24764B')
+    metric(5, '패배', f'{losses:,}', scope + ' 상대 패배', '#B73159')
+    metric(6, '무승부', f'{draws:,}', scope + ' 상대 무승부', '#3156C4')
+    metric(7, 'AI 대국' if network else '2인 대국',
+           f"{stats['wins'] + stats['losses'] + stats['draws'] if network else stats['local']:,}",
+           '이 기기의 플레이 기록', '#7043A0')
     metric(8, '보유 골드', f"{app.profile.data['coins']:,}", '상점에서 사용하세요', '#946100', '#FFF3CE')
-    ai_total = stats['wins'] + stats['losses'] + stats['draws']
-    rate = stats['wins'] / ai_total if ai_total else 0
-    metric(9, 'AI 상대 승률', f'{rate:.0%}' if ai_total else '-',
-           f'AI 대국 {ai_total:,}회 기준' if ai_total else '아직 대국 기록이 없어요', '#24764B')
+    total = wins + losses + draws
+    rate = wins / total if total else 0
+    metric(9, scope + ' 상대 승률', f'{rate:.0%}' if total else '-',
+           '9번: AI 기록' if network else '9번: 통신 기록', '#24764B')
     d.rounded_rectangle((508, 702, 692, 710), radius=4, fill='#DDE6DF')
     if rate:
         d.rounded_rectangle((508, 702, 508 + round(184 * rate), 710), radius=4, fill='#24764B')
@@ -257,6 +265,10 @@ def draw_duel(r, canvas, app):
 
 def draw_connectivity(r, canvas, app):
     ui, screen = app.connectivity, app.screen
+    if not ui.demo and screen.startswith('wifi_'):
+        from .lan_ui import draw_wifi_real
+        if draw_wifi_real(r, canvas, app):
+            return
     art = lambda b, name, selected=False: image_tile(r, canvas, b, name, selected)
     tile = lambda b, title, lines=(), **kw: r.tile(canvas, b, title, lines, **kw)
     def character(b, label, footer):
@@ -272,13 +284,14 @@ def draw_connectivity(r, canvas, app):
             art(5, 'multiplay_icon')
             art(6, 'online_multi_button')
             art(7, 'local_multi_info'); art(9, 'online_multi_info')
-            r.strip(canvas, 5, 'UI 데모 · 실제 통신 준비 중')
+            r.strip(canvas, 5, 'UI 데모 · 실제 통신 준비 중' if ui.demo else '같은 Wi-Fi에서 로컬 대국')
         else:
             art(2, ui.mode + '_multi_title')
             if screen == 'connection':
                 art(4, 'create_room_button_' + ui.mode)
                 art(5, 'search_room_button_' + ui.mode)
-                r.strip(canvas, 7, 'UI 데모 · 실제 연결 없음')
+                r.strip(canvas, 7, 'UI 데모 · 실제 연결 없음' if ui.demo else
+                        '같은 Wi-Fi에 연결하세요' if ui.mode == 'local' else '온라인 통신은 준비 중')
             elif not ui.room_ready:
                 art(5, 'making_room_status' if screen == 'room_create' else 'searching_room_status')
                 art(8, 'multi_game_disabled_button')

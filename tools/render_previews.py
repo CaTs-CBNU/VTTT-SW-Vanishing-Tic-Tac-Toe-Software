@@ -20,6 +20,7 @@ def render(output, font=None):
     output.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as temp:
         cfg = runtime_config()
+        cfg["demo_connectivity"] = True
         cfg["profile"] = str(Path(temp) / "profile.json")
         app = Application(cfg, HeadlessBackend(), Renderer(font), ai=GameAI(cfg))
         try:

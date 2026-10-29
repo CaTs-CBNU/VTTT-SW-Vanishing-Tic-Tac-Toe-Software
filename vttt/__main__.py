@@ -19,6 +19,7 @@ def main(argv=None):
     parser.add_argument("--profile", type=Path, help="설정·기록 저장 파일 경로")
     parser.add_argument("--font", type=Path, help="한글 TTF/TTC/OTF 글꼴 경로")
     parser.add_argument("--check", action="store_true", help="GPIO 없이 설정·모델·이미지 확인")
+    parser.add_argument("--demo-connectivity", action="store_true", help="실제 네트워크 대신 통신 UI 예시 사용")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     backend = None
@@ -30,6 +31,7 @@ def main(argv=None):
         from .app import Application
         hardware = hardware_config(args.hardware_config)
         runtime = runtime_config(args.runtime_config)
+        runtime["demo_connectivity"] = args.demo_connectivity
         if args.profile:
             runtime["profile"] = str(args.profile.resolve())
         renderer = Renderer(args.font)

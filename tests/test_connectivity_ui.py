@@ -16,7 +16,7 @@ from vttt.connectivity_ui import DEMO_NETWORKS, SYMBOLS
 class OfflineUITests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
-        cfg = runtime_config(); cfg['profile'] = str(Path(self.temp.name)/'profile.json')
+        cfg = runtime_config(); cfg['demo_connectivity'] = True; cfg['profile'] = str(Path(self.temp.name)/'profile.json')
         self.now = 10.
         self.app = Application(cfg, HeadlessBackend(), None, ai=object(), clock=lambda:self.now)
         self.ui = self.app.connectivity

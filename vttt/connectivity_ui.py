@@ -1,7 +1,10 @@
-"""Offline connectivity screens. No sockets, system commands or credential storage."""
+"""Connectivity screens with asynchronous NetworkManager operations."""
 
 from dataclasses import dataclass
 import string
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from .wifi import NetworkManagerWifi, WifiError
 
 
 @dataclass(frozen=True)
@@ -23,9 +26,17 @@ SYMBOL_SLOTS = (1, 2, 3, 4, 5, 6)
 
 
 class ConnectivityUI:
-    """State used only to preview physical-button navigation."""
+    """Physical-button navigation and nonblocking Wi-Fi operations."""
     def __init__(self, app):
         self.app = app
+        self.demo = app.config.get("demo_connectivity", False)
+        self.wifi = NetworkManagerWifi()
+        self.available_networks = DEMO_NETWORKS if self.demo else []
+        self.pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="vttt-wifi")
+        self.future = None
+        self.cancel = threading.Event()
+        self.operation = ""
+        self.error = ""
         self.mode = 'local'
         self.room_number = 123
         self.room_ready = False
@@ -43,7 +54,7 @@ class ConnectivityUI:
 
     @property
     def networks(self):
-        return DEMO_NETWORKS[self.scan_page * 4:self.scan_page * 4 + 4]
+        return self.available_networks[self.scan_page * 4:self.scan_page * 4 + 4]
 
     @property
     def symbols(self):
@@ -57,6 +68,16 @@ class ConnectivityUI:
             tail = tail[:-1] + self.password[-1]
         return ('…' if len(tail) > 10 else '') + tail[-10:]
 
+    def cancel_operation(self):
+        self.cancel.set()
+        if self.future:
+            self.future.cancel()
+        self.future = None
+
+    def close(self):
+        self.cancel_operation()
+        self.pool.shutdown(wait=False, cancel_futures=True)
+
     def forget(self):
         self.password = ''
         self.last_character_until = 0
@@ -69,20 +90,36 @@ class ConnectivityUI:
         self.app.go('wifi_scan')
 
     def leave_wifi(self):
+        self.cancel_operation()
         self.forget()
         self.app.go(self.return_screen)
         if self.return_screen in ('room_create', 'room_search') and not self.room_ready:
             self.deadline = self.app.clock() + .8
 
     def scan(self):
+        self.cancel_operation()
         self.scan_page = 0
-        self.deadline = self.app.clock() + .8
+        self.error = ''
         self.app.go('wifi_scanning')
+        if self.demo:
+            self.deadline = self.app.clock() + .8
+        else:
+            self.cancel = threading.Event()
+            self.operation = 'scan'
+            self.future = self.pool.submit(self.wifi.scan, self.cancel)
 
     def connect(self):
+        self.cancel_operation()
         self.last_character_until = 0
-        self.deadline = self.app.clock() + 1.5
+        self.error = ''
         self.app.go('wifi_connecting')
+        if self.demo:
+            self.deadline = self.app.clock() + 1.5
+        else:
+            self.cancel = threading.Event()
+            self.operation = 'connect'
+            self.future = self.pool.submit(self.wifi.connect, self.network, self.password, self.cancel)
+            self.forget()
 
     def add_character(self, char):
         if len(self.password) >= 63:
@@ -117,6 +154,13 @@ class ConnectivityUI:
             elif b == 3:
                 self.open_wifi(); self.scan()
             elif screen == 'connection' and b in (4, 5):
+                if self.mode == 'local' and not self.demo:
+                    if b == 4: app.lan.host()
+                    else: app.lan.search()
+                    return True
+                if self.mode == 'online' and not self.demo:
+                    app.message('온라인 통신은 아직 지원하지 않습니다')
+                    return True
                 self.room_ready = False
                 self.deadline = app.clock() + .8
                 app.go('room_create' if b == 4 else 'room_search')
@@ -137,7 +181,7 @@ class ConnectivityUI:
             elif b == 3: self.scan()
             elif screen == 'wifi_scan':
                 if b in (7, 9):
-                    last = (len(DEMO_NETWORKS) - 1) // 4
+                    last = max(0, (len(self.available_networks) - 1) // 4)
                     self.scan_page = max(0, min(last, self.scan_page + (-1 if b == 7 else 1)))
                     app.touch()
                 elif b in NETWORK_SLOTS:
@@ -171,23 +215,54 @@ class ConnectivityUI:
             elif b == 8: app.go('wifi_password')
             elif b in SYMBOL_SLOTS and b <= len(self.symbols): self.add_character(self.symbols[b - 1])
         elif screen == 'wifi_connecting':
-            if b == 1: app.go('wifi_password' if self.network.secured else 'wifi_scan')
-            elif b in (4, 6):
+            if b == 1:
+                self.cancel_operation()
+                app.go('wifi_password' if self.network.secured else 'wifi_scan')
+            elif self.demo and b in (4, 6):
                 self.result = 'success' if b == 4 else 'failure'; app.go('wifi_result')
         elif screen == 'wifi_result':
             if b == 1:
                 self.leave_wifi()
             elif b == 4:
                 app.go('wifi_password' if self.network.secured else 'wifi_scan')
-            elif b == 5: self.connect()
-            elif b == 6:
+            elif b == 5:
+                if self.demo or not self.network.secured: self.connect()
+                else: app.go('wifi_password')
+            elif b == 6 and self.demo:
                 self.result = 'success' if self.result == 'failure' else 'failure'; app.touch()
+            elif b == 6 and not self.demo:
+                if self.network.secured: app.go('wifi_password')
+                else: self.connect()
             elif b == 8:
                 self.forget(); app.go('wifi_scan')
         return True
 
     def tick(self):
         app, now = self.app, self.app.clock()
+        if self.future is not None and self.future.done():
+            future, self.future = self.future, None
+            try:
+                result = future.result()
+                if self.operation == 'scan':
+                    self.available_networks = result
+                    app.go('wifi_scan')
+                else:
+                    self.result = 'success'
+                    app.go('wifi_result')
+            except (WifiError, OSError):
+                self.error = 'Wi-Fi를 사용할 수 없습니다. 설정과 권한을 확인하세요'
+                try:
+                    future.result()
+                except WifiError as exc:
+                    self.error = str(exc)
+                except OSError:
+                    pass
+                if self.operation == 'scan':
+                    self.available_networks = []
+                    app.go('wifi_scan')
+                else:
+                    self.result = 'failure'
+                    app.go('wifi_result')
         if self.deadline is not None and now >= self.deadline:
             self.deadline = None
             if app.screen == 'wifi_scanning': app.go('wifi_scan')
@@ -196,6 +271,6 @@ class ConnectivityUI:
             elif app.screen in ('room_create', 'room_search'):
                 self.room_ready = True; app.touch()
         step = int(now * 5)
-        if app.screen in ('wifi_scan', 'wifi_password') and step != self.animation_step:
+        if app.screen in ('wifi_scan', 'wifi_password', 'wifi_scanning', 'wifi_connecting') and step != self.animation_step:
             self.animation_step = step
             app.touch()

@@ -17,7 +17,9 @@ class Profile:
         self.warning = ""
         self.data = {"coins": 0, "theme": "default", "owned": ["default"],
                      "settings": {k: defaults[k] for k in ("opponent", "difficulty", "human_first", "show_lifetime")},
-                     "stats": {"played": 0, "wins": 0, "losses": 0, "draws": 0, "local": 0}}
+                     "stats": {"played": 0, "wins": 0, "losses": 0, "draws": 0, "local": 0,
+                               "lan_played": 0, "lan_wins": 0, "lan_losses": 0, "lan_draws": 0},
+                     "recorded_lan_matches": []}
         if self.path.exists():
             try:
                 loaded = json.loads(self.path.read_text(encoding="utf-8"))
@@ -35,6 +37,8 @@ class Profile:
                 for k in ("human_first", "show_lifetime"):
                     if type(settings.get(k)) is bool:
                         self.data["settings"][k] = settings[k]
+                self.data["recorded_lan_matches"] = [x for x in loaded.get("recorded_lan_matches", [])
+                                                     if isinstance(x, str) and len(x) == 32][-512:]
                 stats = loaded.get("stats", {})
                 self.data["stats"] = {k: max(0, int(stats.get(k, 0))) for k in self.data["stats"]}
             except (ValueError, TypeError, AttributeError):
@@ -87,3 +91,27 @@ class Profile:
         self.data["coins"] += coins
         self.save()
         return coins
+
+    def record_network(self, game, human_mark, match_id):
+        if not game.done or len(match_id) != 32:
+            raise ValueError("Only completed network matches can be recorded")
+        reward = 2 if game.winner == 0 else 5 if game.winner == human_mark else 1
+        ids = self.data["recorded_lan_matches"]
+        if match_id in ids:
+            return reward
+        stats = self.data["stats"]
+        previous = stats.copy(), self.data["coins"], ids[:]
+        stats["played"] += 1
+        stats["lan_played"] += 1
+        stats["lan_draws" if game.winner == 0 else "lan_wins" if game.winner == human_mark else "lan_losses"] += 1
+        self.data["coins"] += reward
+        self.data["recorded_lan_matches"] = (ids + [match_id])[-512:]
+        try:
+            self.save()
+        except OSError:
+            stats.clear()
+            stats.update(previous[0])
+            self.data["coins"] = previous[1]
+            self.data["recorded_lan_matches"] = previous[2]
+            raise
+        return reward

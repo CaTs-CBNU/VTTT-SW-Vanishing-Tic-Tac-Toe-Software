@@ -1,0 +1,12 @@
+// Installed explicitly on the Raspberry Pi; only members of vttt-wifi are allowed.
+polkit.addRule(function(action, subject) {
+    var actions = [
+        "org.freedesktop.NetworkManager.wifi.scan",
+        "org.freedesktop.NetworkManager.enable-disable-wifi",
+        "org.freedesktop.NetworkManager.network-control",
+        "org.freedesktop.NetworkManager.settings.modify.system"
+    ];
+    if (subject.isInGroup("vttt-wifi") && actions.indexOf(action.id) !== -1) {
+        return polkit.Result.YES;
+    }
+});

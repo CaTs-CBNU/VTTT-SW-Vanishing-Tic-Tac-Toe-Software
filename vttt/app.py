@@ -8,6 +8,7 @@ import threading
 import time
 
 from .connectivity_ui import ConnectivityUI
+from .lan import LanController
 from .ai import GameAI
 from .profile import Profile, THEMES
 from .rules import Game, MODES
@@ -54,6 +55,7 @@ class Application:
         self.blind_visible, self.reveal_pending, self.result_pending = True, False, False
         self.reveal_until, self.result_at = None, None
         self.ai_after = 0
+        self.lan = LanController(self)
         self.connectivity = ConnectivityUI(self)
         self.pending_difficulty = self.settings["difficulty"]
         self.rps_choice, self.rps_spin, self.rps_until = None, 0, 0.0
@@ -62,6 +64,7 @@ class Application:
         self.duel_start, self.duel_phase = 0.0, -1
         self.duel_picks, self.duel_reason = {"top": None, "bottom": None}, ""
         self.shop_page, self.shop_selected = 0, None
+        self.score_network = False
         self.input_epoch, self.presented_epoch = 0, -1
 
     def touch(self):
@@ -162,12 +165,14 @@ class Application:
         self.go("duel_result")
 
     def is_ai_turn(self):
-        return bool(self.game and not self.game.done and self.settings["opponent"] == "ai"
+        return bool(not self.lan.active and self.game and not self.game.done and self.settings["opponent"] == "ai"
                     and self.game.turn != self.human_mark)
 
     def result_title(self):
         if self.game.winner == 0:
             return "무승부"
+        if self.lan.active:
+            return "내 승리!" if self.game.winner == self.human_mark else "상대 승리!"
         if self.settings["opponent"] == "ai":
             return "이겼어요!" if self.game.winner == self.human_mark else "AI가 이겼어요"
         return "승리!"
@@ -226,7 +231,7 @@ class Application:
         self.touch()
         if self.game.done:
             self.result_pending = True
-            if not self.recorded:
+            if not self.recorded and not self.lan.active:
                 self.recorded = True
                 try:
                     difficulty = FIXED_DIFFICULTY.get(self.game.mode_key, self.settings["difficulty"])
@@ -245,9 +250,11 @@ class Application:
         if event.kind == "quit":
             self.running = False
             return
-        if self.screen == "game" and self.nine_switch is not None:
-            return
         if event.timestamp and event.timestamp <= self.accept_after:
+            return
+        if self.lan.handle(event):
+            return
+        if self.screen == "game" and self.nine_switch is not None:
             return
         button = event.button
         if 1 <= button <= 9:
@@ -393,6 +400,9 @@ class Application:
         elif self.screen == "scores":
             if button == 1:
                 self.go("menu")
+            elif button == 9:
+                self.score_network = not self.score_network
+                self.touch()
         elif self.screen == "help":
             if button == 1:
                 self.go(self.return_screen)
@@ -414,6 +424,9 @@ class Application:
     def tick(self):
         now = self.clock()
         self.connectivity.tick()
+        self.lan.tick()
+        if self.lan.reconnecting:
+            return
         if self.flash and now >= self.flash_until:
             self.flash = ()
             self.animate()
@@ -527,6 +540,7 @@ class Application:
         if hasattr(self.backend, "set_input_context"):
             self.backend.set_input_context(self.screen)
         self.backend.show(self.renderer.draw(self))
+        self.lan.presented()
         now = self.clock()
         # Ignore stale clicks collected during the previous screen's SPI transfer.
         if self.presented_epoch != self.input_epoch or (
@@ -572,5 +586,7 @@ class Application:
         self.closed = True
         self.cancel_ai()
         self.connectivity.forget()
+        self.connectivity.close()
+        self.lan.close()
         self.executor.shutdown(wait=False, cancel_futures=True)
         self.backend.close()
