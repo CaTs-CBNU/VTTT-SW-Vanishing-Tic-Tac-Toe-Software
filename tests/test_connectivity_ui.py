@@ -112,6 +112,88 @@ class OfflineUITests(unittest.TestCase):
         self.app.handle(ButtonEvent(4,'short',started))
         self.assertEqual(self.app.screen,'wifi_chars')
 
+    def test_rps_ai_hand_cycles_until_human_picks(self):
+        self.app.go('rps'); self.now = 100.1
+        shown = []
+        for _ in range(4):
+            self.advance(.2); shown.append(self.app.rps_spin)
+        self.assertTrue(all(b == (a + 1) % 3 for a, b in zip(shown, shown[1:])), shown)
+        with patch('random.randrange', return_value=2): self.press(8)  # rock vs paper: AI wins
+        self.assertEqual((self.app.screen, self.app.rps_choice), ('rps_result', 2))
+        self.app.go('rps'); self.app.rps_choice = None
+        with patch('random.randrange', return_value=1): self.press(8)  # rock vs rock: tie
+        self.advance(.4); self.assertEqual((self.app.screen, self.app.rps_choice), ('rps', 1))
+        self.advance(1.0); self.assertIsNone(self.app.rps_choice)
+
+    def duel(self):
+        self.app.settings.update(opponent='local', human_first=False)
+        self.app.mode_key = 'vanishing'
+        self.app.begin_match()
+        self.assertEqual(self.app.screen, 'duel')
+        self.advance(0)
+
+    def test_duel_counts_down_and_only_accepts_presses_in_the_window(self):
+        self.duel()
+        phases = []
+        for _ in range(3):
+            self.press(9)  # too early: ignored
+            phases.append(self.app.duel_phase)
+            self.advance(1.0)
+        self.assertEqual(phases, [0, 1, 2])
+        self.assertEqual(self.app.duel_picks, {'top': None, 'bottom': None})
+        self.assertTrue(self.app.duel_window_open())
+        self.press(3)  # top player: scissors (their left)
+        self.press(8)  # bottom player: rock -> 1P wins
+        self.assertEqual(self.app.screen, 'duel_result')
+        self.assertTrue(self.app.rps_human_first)
+        self.advance(2)
+        self.assertEqual((self.app.screen, self.app.human_mark), ('game', 1))
+
+    def test_duel_late_player_loses_and_nobody_restarts(self):
+        self.duel()
+        self.advance(3.0)
+        self.press(9)  # only 1P presses
+        self.advance(1.0)
+        self.assertEqual((self.app.screen, self.app.rps_human_first, self.app.duel_reason), ('duel_result', True, '2P가 늦었어요'))
+        self.duel()
+        self.advance(3.0); self.advance(1.0)
+        self.assertEqual((self.app.screen, self.app.notice), ('duel', '둘 다 안 눌렀어요 · 다시!'))
+        self.advance(1.3)
+        self.assertEqual(self.app.duel_phase, 0)  # countdown starts over
+
+    def test_duel_tie_restarts(self):
+        self.duel()
+        self.advance(3.0)
+        self.press(2); self.press(8)  # rock vs rock
+        self.assertEqual((self.app.screen, self.app.notice), ('duel', '비겼어요 · 다시!'))
+
+    def test_two_player_skips_difficulty_and_forced_first_applies(self):
+        self.app.settings.update(opponent='local', human_first=False)
+        for button in (4, 5, 6, 7, 8, 9):
+            self.app.go('mode'); self.press(button)
+            self.assertEqual(self.app.screen, 'duel', button)
+            self.press(4)  # back goes straight to mode selection
+            self.assertEqual(self.app.screen, 'mode')
+        self.app.settings['human_first'] = True  # AI-only setting: 2P still plays RPS
+        self.press(5)
+        self.assertEqual(self.app.screen, 'duel')
+        self.app.rps_human_first = False
+        self.app.start_game()
+        self.assertEqual(self.app.human_mark, -1)
+        self.app.settings.update(opponent='ai', human_first=False)
+        self.app.go('mode'); self.press(5)
+        self.assertEqual(self.app.screen, 'setup')
+
+    def test_every_press_flashes_its_tile(self):
+        self.app.go('settings')
+        self.press(3)  # a tile that does nothing still lights up
+        self.assertEqual(self.app.flash, (3,))
+        self.advance(0.2)
+        self.assertEqual(self.app.flash, ())
+        self.duel(); self.advance(3.0)
+        self.press(1)
+        self.assertEqual(self.app.flash, (1, 2, 3))  # whole row: the chosen hand stays secret
+
     def test_difficulty_confirm_and_rps_leave_game_ready(self):
         self.app.go('setup'); self.press(7); self.press(8)
         self.assertEqual(self.app.screen,'setup')
@@ -120,7 +202,8 @@ class OfflineUITests(unittest.TestCase):
         self.assertEqual(self.app.screen,'rps_result')
         self.advance(); self.assertEqual(self.app.screen,'game')
         self.assertEqual(self.app.settings['difficulty'],'hard')
-        self.assertTrue(self.app.settings['human_first'])
+        self.assertEqual((self.app.rps_human_first, self.app.human_mark), (True, 1))
+        self.assertFalse(self.app.settings['human_first'])  # RPS result is not a setting
 
 
 class HoldInputTests(unittest.TestCase):

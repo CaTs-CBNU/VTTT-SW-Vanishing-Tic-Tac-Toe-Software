@@ -2,16 +2,22 @@
 
 import os
 from pathlib import Path
-from PIL import Image, ImageDraw, ImageFont, ImageOps
+from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 
 from .config import ROOT
 from .profile import THEMES
 from .rules import MODES
-from .ui_render import image_tile, draw_setup, draw_rps, draw_shop, draw_connectivity
+from .ui_render import image_tile, draw_setup, draw_rps, draw_duel, draw_shop, draw_connectivity
 
-BG, INK, BLUE, PINK, GREEN = "#F7F3EF", "#45494C", "#5579FF", "#E965B9", "#45AD76"
+BG, INK, BLUE, PINK, GREEN, ORANGE, RED = "#F7F3EF", "#45494C", "#5579FF", "#E965B9", "#45AD76", "#F0A030", "#E5383B"
 ASSETS = ROOT / "src/static/images"
-DIFFICULTY = {"easy": "쉬움", "normal": "보통", "hard": "어려움"}
+
+
+def countdown_color(left, total):
+    """Grey at a full count, shading to red as the count runs out."""
+    t = (total - left) / (total - 1)
+    grey, red = (0x76, 0x71, 0x6D), (0xE5, 0x38, 0x3B)
+    return tuple(round(g + (r - g) * t) for g, r in zip(grey, red))
 
 
 class Renderer:
@@ -91,6 +97,17 @@ class Renderer:
         self.text(d, (x + 120, y + 219), text, 17, color)
 
     def draw(self, app):
+        canvas = self.compose(app)
+        for button in app.flash:  # pressed: darken the tile and ring it
+            x, y = self.origin(button)
+            tile = canvas.crop((x, y, x + 240, y + 240))
+            canvas.paste(Image.blend(tile, Image.new("RGB", (240, 240), INK), 0.18), (x, y))
+            ImageDraw.Draw(canvas).rounded_rectangle((x + 3, y + 3, x + 236, y + 236), radius=14, outline=BLUE, width=8)
+        if app.duel_window_open():  # "눌러!": red frame around the whole board
+            ImageDraw.Draw(canvas).rectangle((0, 0, 719, 719), outline=RED, width=16)
+        return canvas
+
+    def compose(self, app):
         screen = app.screen
         if screen in ("start", "menu", "mode"):
             canvas = self.pages[screen].copy()
@@ -102,6 +119,8 @@ class Renderer:
         mode = MODES[app.mode_key]
         if screen == "setup":
             draw_setup(self, canvas, app)
+        elif screen in ("duel", "duel_result"):
+            draw_duel(self, canvas, app)
         elif screen in ("rps", "rps_result"):
             draw_rps(self, canvas, app)
         elif screen in ("communication", "connection", "room_create", "room_search") or screen.startswith("wifi_"):
@@ -133,9 +152,9 @@ class Renderer:
             self.tile(canvas, 1, "돌아가기", ("메인 메뉴",))
             self.tile(canvas, 2, "설정", ("누르면 바로 저장",))
             self.tile(canvas, 4, "기본 상대", ("AI" if s["opponent"] == "ai" else "2인 대국",))
-            self.tile(canvas, 5, "AI 난이도", (DIFFICULTY[s["difficulty"]],))
             self.tile(canvas, 6, "말 수명 표시", ("켜짐" if s["show_lifetime"] else "꺼짐",), footer="배니싱 계열 숫자")
-            self.tile(canvas, 7, "사람 선공", ("켜짐" if s["human_first"] else "꺼짐",))
+            self.tile(canvas, 7, "선공", ("켜짐" if s["human_first"] else "꺼짐",),
+                      footer="AI 대국만 · 2인은 가위바위보")
             self.tile(canvas, 8, "게임 설명", ("조작과 규칙 보기",))
             self.tile(canvas, 9, "기기 확인", ("버튼 · LCD 번호", "눌러서 진단 시작"))
         elif screen == "scores":
@@ -170,30 +189,89 @@ class Renderer:
             self.strip(canvas, 2, app.notice, PINK)
         return canvas
 
+    def mark(self, canvas, x, y, mark, theme):
+        if theme == "default":
+            d = ImageDraw.Draw(canvas)
+            if mark == 1:
+                d.ellipse((x + 57, y + 47, x + 183, y + 173), outline=BLUE, width=14)
+            else:
+                d.line((x + 63, y + 53, x + 177, y + 167), fill=PINK, width=16)
+                d.line((x + 177, y + 53, x + 63, y + 167), fill=PINK, width=16)
+        else:
+            icon = self.icons[theme, "o" if mark == 1 else "x"]
+            canvas.paste(icon, (x + (240 - icon.width) // 2, y + 38))
+
+    def motion_view(self, app):
+        """Board, lifetimes and sliding pieces for the current animation frame.
+
+        Order after a move: the pieces drop (0.35 s), the vanished piece blurs out in place
+        (1 s), then whatever it held up falls (0.35 s). Falling slides with speed lines;
+        vanishing never moves, so the two read differently.
+        """
+        game = app.game
+        board, lives = game.board, game.lifetimes()
+        if not app.motion:
+            return board, lives, []
+        now = app.clock()
+        start, drop_end, fade_end, fall_end = app.motion
+        if now < fade_end:
+            board, lives = game.before_fall()
+        if now < drop_end:
+            board = board.copy()
+            if game.vanished:
+                board[game.vanished[0]] = game.vanished[1]
+            moves, t = game.drops, (now - start) / (drop_end - start)
+        elif fade_end <= now < fall_end:
+            board = board.copy()
+            moves, t = game.fell, (now - fade_end) / (fall_end - fade_end)
+        else:
+            return board, lives, []
+        movers = [(a, b, board[b], t) for a, b in moves]
+        for _, b in moves:
+            board[b] = 0
+        return board, {k: v for k, v in lives.items() if board[k]}, movers
+
+    def draw_movers(self, canvas, app, movers):
+        d = ImageDraw.Draw(canvas)
+        for a, b, mark, t in movers:
+            (x0, y0), (x1, y1) = self.origin(a + 1), self.origin(b + 1)
+            e = t * t  # accelerating, like a drop
+            x, y = round(x0 + (x1 - x0) * e), round(y0 + (y1 - y0) * e)
+            if y > y0 + 4:  # speed lines trailing above the piece
+                streak = "#B8C6FF" if mark == 1 else "#F6B9DF"
+                for dx in (-40, 0, 40):
+                    d.line((x + 120 + dx, max(y0 + 40, y - 30), x + 120 + dx, y + 40), fill=streak, width=6)
+            self.mark(canvas, x, y, mark, app.profile.data["theme"])
+
     def game(self, canvas, app, reveal=False):
         game = app.game
-        lives = game.lifetimes()
-        hidden = game.mode.blind and not app.blind_visible and not reveal and not game.done
+        board, lives, movers = self.motion_view(app)
+        hidden = game.mode.blind and not reveal and not game.done
+        swapping = (game.switch_pair() or ()) if not reveal else ()
         for button in range(1, 10):
             action = button - 1
             x, y = self.origin(button)
             d = ImageDraw.Draw(canvas)
-            mark = game.board[action]
+            mark = board[action]
             winning = action in game.winning_cells
             d.rounded_rectangle((x + 6, y + 6, x + 234, y + 234), radius=12,
                                 fill="#E3F4E9" if winning else BG,
-                                outline=GREEN if winning else "#D5D0CB", width=4 if winning else 2)
+                                outline=GREEN if winning else ORANGE if action in swapping else "#D5D0CB",
+                                width=4 if winning else 6 if action in swapping else 2)
+            if app.fade and app.fade[0] == action and not mark and not hidden:
+                # A vanished piece blurs and fades out over five frames.
+                t = app.fade_step / 5
+                ghost = Image.new("RGB", (240, 240), BG)
+                self.mark(ghost, 0, 0, app.fade[1], app.profile.data["theme"])
+                ghost = ghost.filter(ImageFilter.GaussianBlur(2 + 10 * t))
+                ghost = Image.blend(ghost, Image.new("RGB", (240, 240), BG), t)
+                canvas.paste(ghost.crop((20, 36, 220, 196)), (x + 20, y + 36))
             self.text(d, (x + 215, y + 24), str(button), 17, "#98938F")
-            if mark and not hidden:
-                if app.profile.data["theme"] == "default":
-                    if mark == 1:
-                        d.ellipse((x + 57, y + 47, x + 183, y + 173), outline=BLUE, width=14)
-                    else:
-                        d.line((x + 63, y + 53, x + 177, y + 167), fill=PINK, width=16)
-                        d.line((x + 177, y + 53, x + 63, y + 167), fill=PINK, width=16)
-                else:
-                    icon = self.icons[app.profile.data["theme"], "o" if mark == 1 else "x"]
-                    canvas.paste(icon, (x + (240 - icon.width) // 2, y + 38))
+            if action in swapping:
+                self.text(d, (x + 120, y + 26), "교환 예정", 17, ORANGE)
+            # Blind shows only the piece just placed, and only during the reveal window.
+            if mark and (not hidden or (app.blind_visible and action == game.last_action)):
+                self.mark(canvas, x, y, mark, app.profile.data["theme"])
                 if app.settings["show_lifetime"] and action in lives:
                     self.text(d, (x + 29, y + 25), str(lives[action]), 23, PINK if lives[action] == 1 else BLUE)
             elif not mark and not hidden and action == game.last_action:
@@ -204,11 +282,16 @@ class Renderer:
                 elif app.notice:
                     status = app.notice
                 else:
-                    owner = "AI" if app.is_ai_turn() else "사람" if app.settings["opponent"] == "ai" else ("1P" if game.turn == app.local_first_mark else "2P")
-                    status = owner + (" O 차례" if game.turn == 1 else " X 차례")
+                    owner = "AI" if app.is_ai_turn() else "내" if app.settings["opponent"] == "ai" else ("1P" if game.turn == app.local_first_mark else "2P")
+                    status = f"{owner} 차례 · {'O' if game.turn == 1 else 'X'}"
                 self.text(d, (x + 120, y + 201), status, 19)
                 self.text(d, (x + 120, y + 224), "5 길게: 일시정지", 14, "#76716D")
             elif button == 1:
                 self.text(d, (x + 120, y + 219), game.mode.title, 16, "#76716D")
-            elif button == 9 and game.mode.blind:
-                self.text(d, (x + 120, y + 219), "기억하세요" if hidden else "말 공개 중", 16, "#76716D")
+            elif button == 9 and game.mode.clear_every and not game.done:
+                left = game.mode.clear_every - game.moves % game.mode.clear_every
+                self.text(d, (x + 120, y + 216), f"아래줄 삭제까지 {left}수", 20, countdown_color(left, game.mode.clear_every))
+            elif button == 9 and hidden:
+                self.text(d, (x + 120, y + 219), "방금 둔 말 공개 중" if app.blind_visible else "기억하세요", 16, "#76716D")
+        if not hidden:
+            self.draw_movers(canvas, app, movers)
