@@ -59,7 +59,7 @@ def draw_result(r, canvas, app):
     else:
         d.rectangle((484, 4, 715, 235), fill='#545656')
         r.text(d, (600, 120), '무승부', 40, '#FFFFFF')
-    r.text(d, (360, 330), app.result_title(), 32)
+    r.result_message(canvas, (360, 330), app, 32)
     r.text(d, (360, 380), f'{app.game.moves}회 착수', 23)
     r.text(d, (360, 415), f'골드 +{app.last_coins}', 24, '#D6AD24')
     draw_grid(canvas)
@@ -77,7 +77,7 @@ def draw_shop(r, canvas, app):
         x, y = r.origin(b)
         for mark, dx, dy in (('o', 16, 12), ('x', 124, 12), ('x', 16, 108), ('o', 124, 108)):
             icon = r.icons[key, mark].resize((100, 100), Image.Resampling.LANCZOS)
-            canvas.paste(icon, (x+dx, y+dy))
+            canvas.paste(icon, (x+dx, y+dy), icon)
         if app.shop_selected == key:
             d = ImageDraw.Draw(canvas)
             # Yellow dashed frame around the selected theme.
@@ -119,15 +119,16 @@ def draw_rps(r, canvas, app):
                     (7, 'sissor_button'), (8, 'rock_button'), (9, 'paper_button')):
         image_tile(r, canvas, b, name)
     if app.screen == 'rps_result':
-        r.strip(canvas, 2, '1P 선공' if app.settings['opponent'] == 'local' and app.rps_human_first else
-                '2P 선공' if app.settings['opponent'] == 'local' else
-                '내가 먼저 둬요' if app.rps_human_first else 'AI가 먼저 둬요')
+        r.strip(canvas, 2, '')
+        r.piece_text(canvas, (360, 219), 1, app.profile.data['theme'],
+                     '선공' if app.settings['opponent'] == 'local' else
+                     '내가 먼저 둬요' if app.rps_human_first else 'AI가 먼저 둬요', 17)
     elif app.notice:
         r.strip(canvas, 2, app.notice)
 
 
 def draw_duel(r, canvas, app):
-    """2-player RPS: 2P on the top row (drawn upside down for them), 1P on the bottom row."""
+    """Two-player RPS; player pieces are assigned once the first mover is decided."""
     hands = ('sissor_button', 'rock_button', 'paper_button')
     show = app.screen == 'duel_result' or app.duel_phase < 0  # reveal only after both chose
     picks = app.duel_picks
@@ -142,13 +143,20 @@ def draw_duel(r, canvas, app):
     x, y = r.origin(5)
     d = ImageDraw.Draw(canvas)
     if app.screen == 'duel_result':
-        r.tile(canvas, 5, '1P 먼저!' if app.rps_human_first else '2P 먼저!', (app.duel_reason,) if app.duel_reason else ())
+        r.tile(canvas, 5, '', (app.duel_reason,) if app.duel_reason else ())
+        r.piece_text(canvas, (x + 120, y + 44), 1, app.profile.data['theme'], '먼저!', 31)
+        r.text(d, (x + 120, y + 155), '아래쪽 선공' if app.rps_human_first else '위쪽 선공', 23)
     elif app.duel_phase < 0:
         r.text(d, (x + 120, y + 120), app.notice or '준비', 30)
     else:
         r.text(d, (x + 120, y + 112), ('3', '2', '1', '눌러!', '')[app.duel_phase],
                110 if app.duel_phase < 3 else 64, '#E5383B' if app.duel_phase == 3 else '#45494C')
-    r.tile(canvas, 6, '가위바위보', ('위: 2P', '아래: 1P', '눌러! 때 1초 안에'))
+    r.tile(canvas, 6, '가위바위보', ('위쪽 플레이어', '아래쪽 플레이어', '눌러! 때 1초 안에')
+           if app.screen != 'duel_result' else ('', '', '눌러! 때 1초 안에'))
+    if app.screen == 'duel_result':
+        bottom_mark = 1 if app.rps_human_first else -1
+        for cy, mark, prefix in ((338, -bottom_mark, '위: '), (368, bottom_mark, '아래: ')):
+            r.piece_text(canvas, (600, cy), mark, app.profile.data['theme'], '', 23, prefix=prefix)
 
 
 def draw_connectivity(r, canvas, app):

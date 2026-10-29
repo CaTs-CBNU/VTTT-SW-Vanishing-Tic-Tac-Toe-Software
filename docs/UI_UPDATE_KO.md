@@ -29,6 +29,9 @@ python -m vttt --check
 - 설정·결과·상점은 `src/static/images/settings`, `result`, `shop`의 추가 이미지와 첨부된 3×3 배치를 적용했습니다. 설정 2번은 저장, 5번은 설정 아이콘이며 설정 변경 시 자동 저장도 유지합니다. 상점은 선택 테마에 노란 점선 테두리를 표시하며 실제 가격·보유 골드를 표시합니다.
 - 기본 상대가 2인 대국이면 선공 버튼을 회색으로 음영 처리하고 입력을 차단합니다. 새 대국·재대국·일시정지 후 다시 시작 모두 가위바위보를 거칩니다. AI용 선공 설정값은 보존합니다.
 - 나인스위칭은 전환 직전 턴에 빨간 테두리와 빨간색 `이제 바뀝니다!`를 표시합니다. 안내는 시간이 지나도 유지되며 전환 또는 대국 종료 시 사라집니다.
+- 전환 수를 착수하면 먼저 자신의 말로 놓인 보드를 화면 표시 후 1초 동안 보여줍니다. 이어서 모든 말이 함께 가로로 좁아졌다가 상대 말로 펼쳐지는 뒤집기 효과를 표시합니다. 연출 중에는 착수·일시정지 입력과 AI 진행을 막으며, 각 단계를 실제 LCD에 표시한 뒤 타이머를 시작합니다. 착수 자체로 승리하면 전환 연출 없이 승리 처리합니다.
+- 모든 테마의 말 12개는 투명 배경 PNG를 사용합니다. 게임판·상점·결과창에서 알파 채널을 유지해 합성하며, 승리 칸의 배경색도 말 뒤로 보입니다.
+- 게임 내 차례 안내와 승리 문구에는 현재 테마의 해당 말 이미지를 글자 크기에 맞춰 표시합니다. 결과는 `[승리한 말 이미지] 승리!` 형태이며 `1P`·`2P` 표기를 제거했습니다. 가위바위보 전에는 위쪽·아래쪽으로 구분하고, 선공 결정 후 배정된 말 이미지로 표시합니다.
 - 기록과 Wi-Fi는 텍스트 UI를 유지합니다.
 
 ## Wi-Fi 물리 버튼 조작
@@ -75,3 +78,22 @@ python tools/render_previews.py
 - 상태 전환, 전체 영문자·기호·공백 입력, 모든 버튼의 길게 누르기 취소, 마지막 글자 마스킹, 실패 후 재입력·재연결, 페이지 이동, 기존 게임·AI·프로필·모의 LCD 어댑터를 검증했습니다.
 - `docs/previews`에 실제 렌더러가 만든 화면을 포함했습니다. 실제 GPIO, SPI 전송 시간, 실물 LCD 색감은 Raspberry Pi 기기에서 추가 확인이 필요합니다.
 - 기존 테스트에서 발견된 세로 승리 판정 좌표 오류 `(0,5,6)`, `(2,3,8)`을 정상 세로줄 `(0,3,6)`, `(2,5,8)`로 수정하고 8개 승리선을 검증했습니다.
+
+## 테마 말 이미지 배경 제거
+
+2026-10-29, 내장 `image_gen` 도구의 투명 배경 편집을 사용했습니다.
+기존 말 이미지를 각각 입력하여 6개 테마 × O/X 2종을 처리했습니다.
+저장 위치는 `src/static/images/theme/{name}.png`입니다.
+
+`name` 목록: `default-o`, `default-x`, `fishcat-o`, `fishcat-x`,
+`squirrel-o`, `squirrel-x`, `xmas-o`, `xmas-x`, `chiikawa1-o`,
+`chiikawa1-x`, `chiikawa2-o`, `chiikawa2-x`.
+
+각 이미지에 사용한 프롬프트 (`{name}`에 해당 파일명 대입):
+
+```text
+Use case: background-extraction. Edit target: the provided {name} tic-tac-toe piece image. Remove only the plain beige/cream rectangular background and any tile border at the canvas edge, yielding a real transparent RGBA PNG cutout. Preserve the exact existing piece design, pose, shapes, colors, outlines, facial features and any existing markings/watermarks. Preserve white/cream fills INSIDE characters as opaque; make the central hole of a ring/wreath transparent. For simple O and X, retain just the colored symbol. Keep one complete piece centered with a small transparent margin, no cropping, no new elements, no text, no shadow, no checkerboard painted into the image. This is a production game asset, not a redesign. Return only this one isolated piece.
+```
+
+렌더러는 알파 채널을 보존하고, 큰 말과 안내 문구의 작은 말 모두 같은
+테마 PNG를 사용합니다. 상점에서도 투명도를 유지해 합성합니다.

@@ -154,7 +154,7 @@ class OfflineUITests(unittest.TestCase):
         self.advance(3.0)
         self.press(9)  # only 1P presses
         self.advance(1.0)
-        self.assertEqual((self.app.screen, self.app.rps_human_first, self.app.duel_reason), ('duel_result', True, '2P가 늦었어요'))
+        self.assertEqual((self.app.screen, self.app.rps_human_first, self.app.duel_reason), ('duel_result', True, '위쪽이 늦었어요'))
         self.duel()
         self.advance(3.0); self.advance(1.0)
         self.assertEqual((self.app.screen, self.app.notice), ('duel', '둘 다 안 눌렀어요 · 다시!'))

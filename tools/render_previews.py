@@ -60,6 +60,15 @@ def render(output, font=None):
             app.renderer.draw(app).save(output / "winning-board.png")
             app.go("result")
             app.renderer.draw(app).save(output / "result.png")
+            app.profile.data["theme"] = "squirrel"
+            app.renderer.draw(app).save(output / "result-themed.png")
+            app.go("game")
+            app.renderer.draw(app).save(output / "winning-board-themed.png")
+            app.start_game()
+            for a in (0, 3, 1, 4):
+                app.make_move(a)
+            app.renderer.draw(app).save(output / "game-themed.png")
+            app.profile.data["theme"] = "default"
             app.mode_key = "blind"
             app.start_game()
             app.make_move(0)
@@ -77,6 +86,13 @@ def render(output, font=None):
                 app.game = Game(mode, cfg["max_moves"], switch_turns=switch_turns)
                 for a in moves:
                     app.make_move(a)
+                if app.nine_switch is not None:
+                    app.renderer.draw(app).save(output / (name + "-placed.png"))
+                    app.nine_switch.update(phase="switching", progress=0.25)
+                    app.renderer.draw(app).save(output / (name + "-flip.png"))
+                    app.nine_switch.update(progress=0.75)
+                    app.renderer.draw(app).save(output / (name + "-flipped.png"))
+                    app.nine_switch = None
                 app.renderer.draw(app).save(output / (name + ".png"))
             app.settings.update(opponent="local", human_first=False)
             app.mode_key = "vanishing"

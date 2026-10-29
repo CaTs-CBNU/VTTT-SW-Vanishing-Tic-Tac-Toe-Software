@@ -66,7 +66,11 @@ class Renderer:
         for theme in THEMES:
             for mark in ("o", "x"):
                 with Image.open(ASSETS / "theme" / f"{theme}-{mark}.png") as img:
-                    self.icons[theme, mark] = ImageOps.contain(img.convert("RGB"), (150, 150))
+                    icon = img.convert("RGBA")
+                    bounds = icon.getchannel("A").getbbox()
+                    if bounds:
+                        icon = icon.crop(bounds)
+                    self.icons[theme, mark] = ImageOps.contain(icon, (150, 150))
 
     @staticmethod
     def origin(button):
@@ -101,6 +105,31 @@ class Renderer:
         d.rounded_rectangle((x + 8, y + 205, x + 232, y + 234), radius=8, fill=BG)
         self.text(d, (x + 120, y + 219), text, 17, color)
 
+    def piece_text(self, canvas, xy, mark, theme, text, size=26, color=INK, prefix="", max_width=212):
+        """Center a text line with a transparent piece as an inline player label."""
+        d = ImageDraw.Draw(canvas)
+        gap = 6
+        while size > 12:
+            font = self.font(size)
+            width = d.textlength(prefix, font=font) + size + gap + d.textlength(text, font=font)
+            if width <= max_width:
+                break
+            size -= 1
+        font = self.font(size)
+        before = d.textlength(prefix, font=font)
+        width = before + size + gap + d.textlength(text, font=font)
+        left, cy = xy[0] - width / 2, xy[1]
+        d.text((left, cy), prefix, font=font, fill=color, anchor="lm")
+        icon = ImageOps.contain(self.icons[theme, "o" if mark == 1 else "x"], (size, size), Image.Resampling.LANCZOS)
+        canvas.paste(icon, (round(left + before + (size - icon.width) / 2), round(cy - icon.height / 2)), icon)
+        d.text((left + before + size + gap, cy), text, font=font, fill=color, anchor="lm")
+
+    def result_message(self, canvas, xy, app, size=26):
+        if app.game.winner:
+            self.piece_text(canvas, xy, app.game.winner, app.profile.data["theme"], app.result_title(), size)
+        else:
+            self.text(ImageDraw.Draw(canvas), xy, app.result_title(), size)
+
     def draw(self, app):
         canvas = self.compose(app)
         for button in app.flash:  # pressed: darken the tile and ring it
@@ -110,8 +139,8 @@ class Renderer:
             ImageDraw.Draw(canvas).rounded_rectangle((x + 3, y + 3, x + 236, y + 236), radius=14, outline=BLUE, width=8)
         if app.duel_window_open():  # "눌러!": red frame around the whole board
             ImageDraw.Draw(canvas).rectangle((0, 0, 719, 719), outline=RED, width=16)
-        if app.screen == "game" and app.game.nine_switch_due():
-            self.strip(canvas, 2, "이제 바뀝니다!", RED)
+        if app.screen == "game" and (app.game.nine_switch_due() or app.nine_switch is not None):
+            self.strip(canvas, 2, "스위칭!" if app.nine_switch and app.nine_switch["phase"] == "switching" else "이제 바뀝니다!", RED)
             ImageDraw.Draw(canvas).rectangle((0, 0, 719, 719), outline=RED, width=12)
         return canvas
 
@@ -183,16 +212,8 @@ class Renderer:
         return canvas
 
     def mark(self, canvas, x, y, mark, theme):
-        if theme == "default":
-            d = ImageDraw.Draw(canvas)
-            if mark == 1:
-                d.ellipse((x + 57, y + 47, x + 183, y + 173), outline=BLUE, width=14)
-            else:
-                d.line((x + 63, y + 53, x + 177, y + 167), fill=PINK, width=16)
-                d.line((x + 177, y + 53, x + 63, y + 167), fill=PINK, width=16)
-        else:
-            icon = self.icons[theme, "o" if mark == 1 else "x"]
-            canvas.paste(icon, (x + (240 - icon.width) // 2, y + 38))
+        icon = self.icons[theme, "o" if mark == 1 else "x"]
+        canvas.paste(icon, (x + (240 - icon.width) // 2, y + 38), icon)
 
     def motion_view(self, app):
         """Board, lifetimes and sliding pieces for the current animation frame.
@@ -203,6 +224,8 @@ class Renderer:
         """
         game = app.game
         board, lives = game.board, game.lifetimes()
+        if app.nine_switch is not None:
+            return app.nine_switch["board"], lives, []
         if not app.motion:
             return board, lives, []
         now = app.clock()
@@ -264,20 +287,32 @@ class Renderer:
                 self.text(d, (x + 120, y + 26), "교환 예정", 17, ORANGE)
             # Blind shows only the piece just placed, and only during the reveal window.
             if mark and (not hidden or (app.blind_visible and action == game.last_action)):
-                self.mark(canvas, x, y, mark, app.profile.data["theme"])
+                animation = app.nine_switch
+                if animation is not None and animation["phase"] == "switching":
+                    progress = animation["progress"]
+                    icon = self.icons[app.profile.data["theme"], "o" if (mark if progress < 0.5 else -mark) == 1 else "x"]
+                    width = max(1, round(icon.width * abs(1 - 2 * progress)))
+                    icon = icon.resize((width, icon.height), Image.Resampling.LANCZOS)
+                    canvas.paste(icon, (x + (240 - width) // 2, y + 38), icon)
+                else:
+                    self.mark(canvas, x, y, mark, app.profile.data["theme"])
                 if app.settings["show_lifetime"] and action in lives:
                     self.text(d, (x + 29, y + 25), str(lives[action]), 23, PINK if lives[action] == 1 else BLUE)
             elif not mark and not hidden and action == game.last_action:
                 self.text(d, (x + 120, y + 110), "", 26)
             if button == 5:
-                if game.done:
-                    status = app.result_title()
+                if app.nine_switch is not None:
+                    if app.nine_switch["phase"] == "placed":
+                        self.piece_text(canvas, (x + 120, y + 201), -game.turn, app.profile.data["theme"], "착수!", 19)
+                    else:
+                        self.text(d, (x + 120, y + 201), "말 스위칭 중", 19, RED)
+                elif game.done:
+                    self.result_message(canvas, (x + 120, y + 201), app, 19)
                 elif app.notice:
-                    status = app.notice
+                    self.text(d, (x + 120, y + 201), app.notice, 19)
                 else:
-                    owner = "AI" if app.is_ai_turn() else "내" if app.settings["opponent"] == "ai" else ("1P" if game.turn == app.local_first_mark else "2P")
-                    status = f"{owner} 차례 · {'O' if game.turn == 1 else 'X'}"
-                self.text(d, (x + 120, y + 201), status, 19)
+                    status = ("AI 차례" if app.is_ai_turn() else "내 차례") if app.settings["opponent"] == "ai" else "차례"
+                    self.piece_text(canvas, (x + 120, y + 201), game.turn, app.profile.data["theme"], status, 19)
                 self.text(d, (x + 120, y + 224), "5 길게: 일시정지", 14, "#76716D")
             elif button == 1:
                 self.text(d, (x + 120, y + 219), game.mode.title, 16, "#76716D")

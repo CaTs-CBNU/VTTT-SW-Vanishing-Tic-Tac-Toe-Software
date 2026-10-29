@@ -484,12 +484,83 @@ class AppTests(unittest.TestCase):
         app.make_move(8)
         self.assertEqual(app.game.last_event, "switch")
         self.assertFalse(app.game.nine_switch_due())
+        self.assertEqual(r.draw(app).getpixel((0, 0)), ImageColor.getrgb(RED))
+        app.present()
+        self.now[0] += 1.1
+        app.tick()
+        for _ in range(4):
+            app.present()
+            self.now[0] += 0.2
+            app.tick()
         self.assertNotEqual(r.draw(app).getpixel((0, 0)), ImageColor.getrgb(RED))
+        app.start_game()
         app.game = Game("switch_nine", switch_turns=(5, 6))
         for a in (0, 3, 1, 4, 2):
             app.make_move(a)
         self.assertTrue(app.game.done)
         self.assertFalse(app.game.nine_switch_due())
+        self.assertIsNone(app.nine_switch)
+
+    def test_nine_switch_shows_placement_before_simultaneous_flip(self):
+        from vttt.app import SWITCH_HOLD_SECONDS, SWITCH_FLIP_SECONDS
+        from vttt.render import Renderer
+        app = self.app
+        app.mode_key, app.settings["opponent"] = "switch_nine", "local"
+        app.start_game()
+        app.game = Game("switch_nine", switch_turns=(5,))
+        for action in (0, 3, 1, 4, 8):
+            app.make_move(action)
+        r = Renderer()
+        board, lives, _ = r.motion_view(app)
+        self.assertEqual(board[8], 1)  # the new piece is still the mover's
+        self.assertEqual(board, [-mark for mark in app.game.board])
+        self.assertEqual(lives, app.game.lifetimes())
+        self.assertEqual(app.game.board[8], -1)  # rules remain atomic for AI/search
+        original = app.game.key()
+        self.press(6)
+        self.press(5, "long")
+        self.assertFalse(app.make_move(5))
+        self.assertEqual((app.screen, app.game.key()), ("game", original))
+        # Even a very slow first display cannot consume the confirmation time.
+        self.now[0] += 20
+        app.tick()
+        self.assertEqual(app.nine_switch["phase"], "placed")
+        app.present()
+        self.now[0] += SWITCH_HOLD_SECONDS - 0.01
+        app.tick()
+        self.assertEqual(app.nine_switch["phase"], "placed")
+        self.now[0] += 0.02
+        app.tick()
+        self.assertEqual(app.nine_switch["phase"], "switching")
+        for progress in (0, 0.25, 0.5, 0.75):
+            self.assertEqual(app.nine_switch["progress"], progress)
+            self.now[0] += 20
+            app.tick()  # no frame can be skipped before it is presented
+            self.assertEqual(app.nine_switch["progress"], progress)
+            app.present()
+            self.now[0] += SWITCH_FLIP_SECONDS / 4 + 0.01
+            app.tick()
+        self.assertIsNone(app.nine_switch)
+        self.assertEqual(r.motion_view(app)[0], app.game.board)
+        self.assertEqual(app.game.key(), original)
+        self.assertTrue(app.make_move(5))
+
+    def test_nine_switch_blocks_ai_and_reset_clears_animation(self):
+        app = self.app
+        app.mode_key = "switch_nine"
+        app.settings.update(opponent="ai", human_first=True)
+        app.start_game()
+        app.game = Game("switch_nine", switch_turns=(5,))
+        for action in (0, 3, 1, 4, 8):
+            app.make_move(action)
+        self.assertTrue(app.is_ai_turn())
+        self.now[0] += 20
+        app.tick()
+        self.assertIsNone(app.future)
+        self.assertEqual(app.game.moves, 5)
+        app.start_game()
+        self.assertIsNone(app.nine_switch)
+        self.assertTrue(app.make_move(0))
 
     def test_ai_move_waits_two_seconds_however_fast_it_thinks(self):
         app = self.app

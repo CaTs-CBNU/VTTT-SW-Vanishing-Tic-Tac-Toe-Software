@@ -17,6 +17,8 @@ LOG = logging.getLogger(__name__)
 FLASH_SECONDS = 0.15  # pressed-button highlight
 DROP_SECONDS = 0.35  # gravity pieces sliding down a row (distinct from the vanish fade)
 FADE_SECONDS = 1.0
+SWITCH_HOLD_SECONDS = 1.0  # begins after the placed-piece frame reaches the displays
+SWITCH_FLIP_SECONDS = 0.5
 DUEL_STEP = 1.0  # 2-player RPS: "3", "2", "1", then a one-second "눌러!" window
 DUEL_TOP = {3: 0, 2: 1, 1: 2}  # top player sees the row upside down: their left is button 3
 DUEL_BOTTOM = {7: 0, 8: 1, 9: 2}  # scissors, rock, paper
@@ -41,6 +43,7 @@ class Application:
         self.ai_ready_at = 0.0
         self.fade, self.fade_step = None, 0
         self.motion, self.motion_frame = None, -1  # (start, drop_end, fade_end, fall_end)
+        self.nine_switch = None
         self.accept_after = float("-inf")
         self.notice, self.notice_until = self.profile.warning, None
         self.return_screen, self.help_index = "menu", 0
@@ -112,6 +115,7 @@ class Application:
         self.reveal_until = self.result_at = None
         self.reveal_pending = self.result_pending = False
         self.fade = self.motion = None
+        self.nine_switch = None
         self.ai_after = self.clock() + 0.3
         self.go("game")
 
@@ -147,7 +151,7 @@ class Application:
             return
         if top is None or bottom is None:
             bottom_wins = top is None
-            self.duel_reason = ("2P" if top is None else "1P") + "가 늦었어요"
+            self.duel_reason = ("위쪽" if top is None else "아래쪽") + "이 늦었어요"
         else:
             bottom_wins = (bottom - top) % 3 == 1
         self.rps_human_first = bottom_wins
@@ -163,9 +167,11 @@ class Application:
             return "무승부"
         if self.settings["opponent"] == "ai":
             return "이겼어요!" if self.game.winner == self.human_mark else "AI가 이겼어요"
-        return ("1P" if self.game.winner == self.local_first_mark else "2P") + (" O 승리!" if self.game.winner == 1 else " X 승리!")
+        return "승리!"
 
     def make_move(self, action):
+        if self.nine_switch is not None:
+            return False
         try:
             self.game.play(action)
         except ValueError as exc:
@@ -173,7 +179,12 @@ class Application:
             return False
         self.notice, self.notice_until = "", None
         event = self.game.last_event
-        if event and not self.game.done:
+        if event == "switch" and self.game.mode.switch == "nine":
+            # Rules and AI retain an atomic move; presentation first shows the
+            # completed placement before ownership was inverted.
+            self.nine_switch = {"board": [-mark for mark in self.game.board],
+                                "phase": "placed", "shown_at": None, "progress": 0.0}
+        elif event and not self.game.done:
             self.message({"clear": "아래줄 삭제!", "switch": "소유권 반전!" if self.game.mode.switch == "nine" else "위치 교환!"}[event])
         elif self.game.switch_pair():
             self.message("다음 수 후 위치 교환!")
@@ -209,6 +220,8 @@ class Application:
     def handle(self, event):
         if event.kind == "quit":
             self.running = False
+            return
+        if self.screen == "game" and self.nine_switch is not None:
             return
         if event.timestamp and event.timestamp <= self.accept_after:
             return
@@ -405,6 +418,31 @@ class Application:
             self.touch()
         if self.screen != "game":
             return
+        if self.nine_switch is not None:
+            animation = self.nine_switch
+            shown_at = animation["shown_at"]
+            if shown_at is not None:
+                elapsed = now - shown_at
+                if animation["phase"] == "placed" and elapsed >= SWITCH_HOLD_SECONDS:
+                    animation.update(phase="switching", shown_at=None)
+                    self.touch()
+                elif animation["phase"] == "switching":
+                    if elapsed >= SWITCH_FLIP_SECONDS / 4:
+                        if animation["progress"] >= 0.75:
+                            self.nine_switch = None
+                            self.message("소유권 반전!")
+                        else:
+                            animation["progress"] += 0.25
+                            animation["shown_at"] = None
+                            self.touch()
+            # Do not place another move, start AI work or advance a result
+            # until the completed switch frame has been presented.
+            if self.fade:
+                self.fade_step = min(5, max(0, int((now - self.fade[2]) / 0.2)))
+                if self.fade_step == 5:
+                    self.fade = None
+                self.animate()
+            return
         if self.motion:
             if now >= self.motion[3]:
                 self.motion = None
@@ -470,6 +508,10 @@ class Application:
         self.presented_content = self.content_revision
         self.rendered_revision = self.revision
         if self.screen == "game":
+            if self.nine_switch is not None:
+                if self.nine_switch["shown_at"] is None:
+                    self.nine_switch["shown_at"] = now
+                return
             if self.reveal_pending:
                 self.reveal_pending = False
                 self.reveal_until = now + self.config["blind_reveal_seconds"]
