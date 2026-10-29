@@ -245,3 +245,9 @@ environment:
 ```
 ~ % python -m vttt --simulate
 ```
+
+### 라즈베리파이 통신 설정
+아래 명령어를 최초 한 번 실행하고 재로그인 또는 재부팅 후 앱을 실행하세요.
+```
+sudo bash scripts/enable_wifi_control.sh
+```
