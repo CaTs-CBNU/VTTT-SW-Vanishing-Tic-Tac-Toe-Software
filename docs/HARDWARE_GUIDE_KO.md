@@ -1,5 +1,40 @@
 # 다이내믹 틱택토 실행 안내
 
+## 부팅 시 자동 실행
+
+먼저 `bash scripts/run_hardware.sh`로 LCD·버튼 앱이 정상 실행되는지 확인하세요.
+각 라즈베리파이의 프로젝트 폴더에서 일반 사용자로 로그인한 뒤 한 번 실행합니다.
+
+```bash
+sudo bash scripts/enable_autostart.sh
+sudo reboot
+```
+
+현재 로그인한 사용자의 권한과 프로젝트의 절대 경로로 `vttt.service`를 등록합니다.
+등록 직후에는 기존 앱과 중복 실행하지 않으며 다음 부팅부터 실행합니다.
+로그인이나 데스크톱 자동 로그인이 필요하지 않습니다. 하드웨어용 앱만 실행하며
+`--simulate` 창을 자동 실행하는 설정은 아닙니다.
+기존 `.venv`가 있으면 해당 Python을 사용하고 기본 서버 주소는 `configs/runtime.json`을 따릅니다.
+인터넷 연결 완료를 기다리지 않으며, Wi-Fi 저장 연결은 NetworkManager가 처리합니다.
+앱 오류 종료 시 5초 후 재시작하고, 앱에서 정상 종료하면 다시 부팅하거나 수동 시작하기 전까지 종료 상태를 유지합니다.
+
+```bash
+systemctl status vttt.service --no-pager
+journalctl -u vttt.service -b -n 50 --no-pager
+```
+
+코드 업데이트 시 서비스로 실행된 앱을 먼저 중지한 뒤 업데이트하고 다시 시작합니다.
+
+```bash
+sudo systemctl stop vttt.service
+git pull origin main
+sudo systemctl start vttt.service
+```
+
+자동 실행을 해제하려면 `sudo systemctl disable --now vttt.service`를 실행하세요.
+프로젝트 위치나 실행 사용자를 바꿨다면 새 위치에서 등록 스크립트를 다시 실행하세요.
+systemd의 enable·서비스 관리 동작은 [공식 매뉴얼](https://manpages.debian.org/bookworm/systemd/systemctl.1.en.html)을 참고하세요.
+
 대상은 기존 Python 코드와 같은 Raspberry Pi 4, 240×240 ST7789 LCD 9개, GPIO 버튼 9개입니다. 핀 번호는 모두 **BCM GPIO 번호**입니다. 사용자의 지시에 따라 PDF 회로도보다 기존 코드를 우선했습니다.
 
 ## 1. 설치
