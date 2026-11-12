@@ -16,16 +16,20 @@ if [[ -z "$target_user" || "$target_user" == root ]] || ! id -- "$target_user" >
     exit 1
 fi
 project_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
-# Quote paths for systemd's unit syntax, including literal percent specifiers.
+# WorkingDirectory takes a single path value, not a shell-quoted argument.
+working_path=${project_dir//%/%%}
+# ExecStart uses quoted command arguments and its own environment expansion.
 unit_path=${project_dir//\\/\\\\}
 unit_path=${unit_path//\"/\\\"}
 unit_path=${unit_path//%/%%}
+unit_path=${unit_path//\$/\$\$}
 if [[ "$project_dir" == *$'\n'* || "$project_dir" == *$'\r'* ]]; then
     echo '프로젝트 경로에는 줄바꿈을 사용할 수 없습니다.' >&2
     exit 1
 fi
-unit_file=$(mktemp)
-trap 'rm -f -- "$unit_file"' EXIT
+unit_dir=$(mktemp -d)
+unit_file="$unit_dir/vttt.service"
+trap 'rm -f -- "$unit_file"; rmdir -- "$unit_dir"' EXIT
 cat > "$unit_file" <<EOF
 [Unit]
 Description=VTTT Raspberry Pi game
@@ -35,7 +39,7 @@ StartLimitIntervalSec=0
 [Service]
 Type=simple
 User=$target_user
-WorkingDirectory="$unit_path"
+WorkingDirectory=$working_path
 Environment=PYTHONUNBUFFERED=1
 ExecStart=/bin/bash "$unit_path/scripts/run_hardware.sh"
 Restart=on-failure
@@ -46,6 +50,9 @@ TimeoutStopSec=20
 [Install]
 WantedBy=multi-user.target
 EOF
+if command -v systemd-analyze >/dev/null 2>&1; then
+    systemd-analyze verify "$unit_file"
+fi
 install -m 0644 "$unit_file" /etc/systemd/system/vttt.service
 systemctl daemon-reload
 systemctl enable vttt.service
