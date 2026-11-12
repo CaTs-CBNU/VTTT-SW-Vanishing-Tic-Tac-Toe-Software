@@ -181,6 +181,17 @@ class LanController:
         self.pending = {}
         self.was_disconnected = False
 
+    def return_to_menu(self):
+        """Abandon the old session locally without waiting for the missing opponent."""
+        self.close()
+        app = self.app
+        app.cancel_ai()
+        app.game = self.game = None
+        app.fade = app.motion = app.nine_switch = app.gravity_warning = None
+        app.reveal_pending = app.result_pending = False
+        app.reveal_until = app.result_at = None
+        app.go('menu')
+
     def _stage(self, phase):
         self.phase = phase
         self.stage += 1
@@ -487,7 +498,7 @@ class LanController:
             return True
         if screen == 'lan_closed':
             if event.kind == 'short' and b == 1:
-                app.go('menu')
+                self.return_to_menu()
             return True
         if screen == 'lan_search':
             if event.kind != 'short':
@@ -514,6 +525,9 @@ class LanController:
             return True
         if not self.active:
             return False
+        if self.reconnecting and event.kind == 'short' and b == 1:
+            self.return_to_menu()
+            return True
         if event.kind == 'short' and b == 1 and screen in ('lan_lobby', 'lan_wait'):
             self.close()
             app.go('connection')

@@ -1,6 +1,6 @@
 """Live local-network and NetworkManager screens, using the nine-display layout."""
 from PIL import Image, ImageDraw
-from .ui_render import image_tile
+from .ui_render import BG, image_tile
 
 
 def draw_lan(r, canvas, app):
@@ -74,7 +74,8 @@ def draw_lan(r, canvas, app):
         else:
             r.tile(canvas, 6, '선택 안내', ('양쪽이 선택하면', '결과를 공개합니다'))
     elif screen == 'lan_closed':
-        r.tile(canvas, 5, '대국 연결 종료', ('상대가 방을 나갔습니다', '돌아가서 새 방을 찾으세요'))
+        r.tile(canvas, 1, '메뉴로 돌아가기', footer='1번을 눌러 이동')
+        r.tile(canvas, 5, '대국 연결 종료', ('상대가 방을 나갔습니다', '1번으로 메뉴로 이동'))
 
 
 def draw_reconnect(r, canvas, app):
@@ -84,7 +85,11 @@ def draw_reconnect(r, canvas, app):
     r.text(d, (360, 290), '통신 연결 끊김', 25, '#B73159')
     r.text(d, (360, 335), '상대 연결을 확인 중', 20)
     r.text(d, (360, 381), '재연결 중' + '.' * (int(app.clock() * 2) % 4), 27, '#3156C4')
-    r.text(d, (360, 437), '복구되면 이어서 진행해요', 17)
+    r.text(d, (360, 420), '복구되면 이어서 진행해요', 17)
+    r.text(d, (360, 448), '1번: 메뉴로 돌아가기', 17)
+    # Draw the complete first LCD after dimming, so the exit stays fully visible.
+    canvas.paste(BG, (0, 0, 240, 240))
+    r.tile(canvas, 1, '메뉴로 돌아가기', ('현재 연결을 종료합니다',), footer='1번을 눌러 이동')
 
 
 def draw_wifi_real(r, canvas, app):

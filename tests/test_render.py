@@ -42,6 +42,18 @@ class PieceRenderingTests(unittest.TestCase):
                                        (0, image.height - 1), (image.width - 1, image.height - 1)):
                             self.assertEqual(image.getpixel(corner)[3], 0)
 
+    def test_reconnect_exit_display_is_not_dimmed(self):
+        from vttt.lan_ui import draw_reconnect
+        from vttt.ui_render import BG
+        # Compare the complete LCD against a separately drawn, undimmed button.
+        expected = Image.new('RGB', (720, 720), BG)
+        self.renderer.tile(expected, 1, '메뉴로 돌아가기', ('현재 연결을 종료합니다',), footer='1번을 눌러 이동')
+        canvas = Image.new('RGB', (720, 720), 'white')
+        draw_reconnect(self.renderer, canvas, self.app)
+        self.assertEqual(canvas.crop((0, 0, 240, 240)).tobytes(),
+                         expected.crop((0, 0, 240, 240)).tobytes())
+        self.assertNotEqual(canvas.getpixel((600, 100)), (255, 255, 255))
+
     def test_piece_keeps_winning_tile_background_visible(self):
         for theme in THEMES:
             with self.subTest(theme=theme):

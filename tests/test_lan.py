@@ -140,6 +140,50 @@ class LanIntegrationTests(unittest.TestCase):
         self.guest.handle(ButtonEvent(8, 'short'))
         self.pump(lambda: self.host.screen == 'mode' and self.guest.lan.synced)
 
+    def test_disconnected_players_can_abandon_and_pair_in_a_new_room(self):
+        self.connect(); self.start(); self.move(0)
+        old_room = self.host.lan.link.room.id
+        coins = [a.profile.data['coins'] for a in self.apps]
+        before = self.host.game.key()
+        target = self.guest.lan.link.room
+        self.guest.lan.discovery.close(); self.guest.lan.discovery = None
+        self.guest.lan.link.room = Room(target.id, target.number, '127.0.0.1', 1)
+        self.guest.lan.link.drop_connection()
+        self.pump(lambda: all(a.lan.reconnecting for a in self.apps))
+        self.host.handle(ButtonEvent(5, 'short'))
+        self.assertEqual(self.host.game.key(), before)
+        self.host.handle(ButtonEvent(5, 'long'))
+        self.assertTrue(self.host.lan.reconnecting)
+        self.host.handle(ButtonEvent(1, 'short'))
+        self.guest.handle(ButtonEvent(1, 'short'))
+        for app in self.apps:
+            self.assertEqual(app.screen, 'menu')
+            self.assertFalse(app.lan.active)
+            self.assertIsNone(app.lan.link)
+            self.assertIsNone(app.game)
+            self.assertEqual(app.lan.pending, {})
+            self.assertFalse(app.result_pending)
+        self.assertEqual([a.profile.data['coins'] for a in self.apps], coins)
+        self.assertEqual([a.profile.data['stats']['lan_played'] for a in self.apps], [0, 0])
+        self.connect()
+        self.assertNotEqual(self.host.lan.link.room.id, old_room)
+        self.start()
+        self.assertEqual([a.game.moves for a in self.apps], [0, 0])
+
+    def test_closed_session_allows_either_player_to_return_to_menu(self):
+        self.connect()
+        self.guest.lan.close()
+        self.pump(lambda: self.host.screen == 'lan_closed')
+        self.host.handle(ButtonEvent(1, 'short'))
+        self.assertEqual(self.host.screen, 'menu')
+        self.assertIsNone(self.host.game)
+        self.connect()
+        self.host.lan.close()
+        self.pump(lambda: self.guest.screen == 'lan_closed')
+        self.guest.handle(ButtonEvent(1, 'short'))
+        self.assertEqual(self.guest.screen, 'menu')
+        self.assertIsNone(self.guest.game)
+
 
 class SnapshotTests(unittest.TestCase):
     def test_round_trip_every_mode_and_reject_malformed_boards(self):
