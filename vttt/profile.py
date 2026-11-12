@@ -3,6 +3,7 @@
 import json
 import os
 import tempfile
+import uuid
 from pathlib import Path
 
 THEMES = {"default": ("기본", 0), "fishcat": ("고양이", 20),
@@ -19,13 +20,16 @@ class Profile:
                      "settings": {k: defaults[k] for k in ("opponent", "difficulty", "human_first", "show_lifetime")},
                      "stats": {"played": 0, "wins": 0, "losses": 0, "draws": 0, "local": 0,
                                "lan_played": 0, "lan_wins": 0, "lan_losses": 0, "lan_draws": 0},
-                     "recorded_lan_matches": []}
+                     "recorded_lan_matches": [], "online_identity": ""}
         if self.path.exists():
             try:
                 loaded = json.loads(self.path.read_text(encoding="utf-8"))
                 if not isinstance(loaded, dict):
                     raise ValueError("invalid profile")
                 self.data["coins"] = max(0, int(loaded.get("coins", 0)))
+                identity = loaded.get('online_identity', '')
+                if isinstance(identity, str) and len(identity) == 32 and all(c in '0123456789abcdef' for c in identity):
+                    self.data['online_identity'] = identity
                 owned = loaded.get("owned", [])
                 self.data["owned"] = sorted({"default"} | {t for t in owned if t in THEMES})
                 theme = loaded.get("theme", "default")
@@ -43,6 +47,17 @@ class Profile:
                 self.data["stats"] = {k: max(0, int(stats.get(k, 0))) for k in self.data["stats"]}
             except (ValueError, TypeError, AttributeError):
                 self.warning = "기록 파일을 읽지 못해 기본값으로 시작합니다."
+
+    def relay_identity(self):
+        """Persist this device's guest identity so a restarted app can resume its room."""
+        if not self.data['online_identity']:
+            self.data['online_identity'] = uuid.uuid4().hex
+            try:
+                self.save()
+            except OSError:
+                self.data['online_identity'] = ''
+                raise
+        return self.data['online_identity']
 
     def save(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)

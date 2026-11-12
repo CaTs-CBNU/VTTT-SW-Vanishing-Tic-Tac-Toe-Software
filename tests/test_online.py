@@ -99,6 +99,39 @@ class OnlineIntegrationTests(lan_tests.LanIntegrationTests):
         self.assertEqual(self.host.screen, 'connection')
         self.assertIsNone(self.host.lan.link)
 
+    def test_disconnected_guest_finds_same_room_after_app_restart_and_continues(self):
+        from vttt.app import Application
+        from vttt.backends import HeadlessBackend
+        from vttt.lan_transport import Room
+        self.connect(); self.start(); self.move(0)
+        room = self.host.lan.link.room
+        before = self.host.game.key()
+        identity = self.guest.profile.relay_identity()
+        match_id = self.host.lan.match_id
+        self.guest.lan.discovery.close(); self.guest.lan.discovery = None
+        self.guest.lan.link.room = Room(room.id, room.number, '127.0.0.1', 1)
+        self.guest.lan.link.drop_connection()
+        self.pump(lambda: all(a.lan.reconnecting for a in self.apps))
+        self.guest.handle(ButtonEvent(1, 'short'))
+        self.assertEqual(self.guest.screen, 'menu')
+        cfg, renderer = self.guest.config, self.guest.renderer
+        self.guest.close()
+        self.guest = Application(cfg, HeadlessBackend(), renderer, ai=object())
+        self.guest.connectivity.mode = 'online'
+        self.apps[1] = self.guest
+        self.assertEqual(self.guest.profile.relay_identity(), identity)
+        self.guest.lan.search()
+        self.pump(lambda: any(r.id == room.id and r.number == room.number for r in self.guest.lan.rooms))
+        self.guest.handle(ButtonEvent(4, 'short'))
+        self.guest.handle(ButtonEvent(8, 'short'))
+        self.pump(lambda: self.guest.lan.synced and all(self.host.lan.ready.values()) and
+                  all(self.guest.lan.ready.values()))
+        self.assertEqual(self.guest.lan.match_id, match_id)
+        self.assertEqual(self.guest.game.key(), before)
+        self.assertGreaterEqual(self.guest.lan.sequence, self.host.lan.ack)
+        self.move(3)
+        self.assertEqual(self.host.game.moves, 2)
+
 
 class RelayProtocolTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
@@ -138,6 +171,12 @@ class RelayProtocolTests(unittest.IsolatedAsyncioTestCase):
             await asyncio.wait_for(ordr.readline(), .1)
         gw.close()
         self.assertEqual(json.loads(await asyncio.wait_for(hr.readline(), 2))['type'], 'peer_down')
+        _, _, anonymous = await self.connect(op='list')
+        self.assertNotIn(room['id'], [r['id'] for r in anonymous['rooms']])
+        _, _, mine = await self.connect(op='list', token='a' * 32)
+        self.assertIn(dict(id=room['id'], number=room['number']), mine['rooms'])
+        _, _, outsider = await self.connect(op='list', token='b' * 32)
+        self.assertNotIn(room['id'], [r['id'] for r in outsider['rooms']])
         _, _, rejected = await self.connect(op='connect', room=room['id'], role='guest', token='b' * 32)
         self.assertIsNone(rejected)
         _, _, restored = await self.connect(op='connect', room=room['id'], role='guest', token='a' * 32)

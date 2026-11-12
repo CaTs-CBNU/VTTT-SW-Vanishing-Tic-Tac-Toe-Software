@@ -33,8 +33,9 @@ def request(host, port, operation):
 class OnlineDirectory:
     """Poll a central room list without network I/O in the render loop."""
 
-    def __init__(self, host, port):
+    def __init__(self, host, port, identity=''):
         self.host, self.port = host, port
+        self.identity = identity
         self.rooms = []
         self.error = ''
         self.stop = threading.Event()
@@ -64,7 +65,7 @@ class OnlineDirectory:
     def _run(self):
         while not self.stop.is_set():
             try:
-                value = request(self.host, self.port, dict(op='list'))
+                value = request(self.host, self.port, dict(op='list', token=self.identity))
                 if value.get('type') != 'rooms' or not isinstance(value.get('rooms'), list) or len(value['rooms']) > 64:
                     raise ValueError('bad room list')
                 rooms = []
@@ -110,6 +111,7 @@ class OnlineLink(LanLink):
         self.stop = threading.Event()
         self.connected = self.ever_connected = False
         self.server_connected = False
+        self.leave_on_close = True
         self.socket = self.listener = None
         self.heartbeat, self.timeout = .5, 4.0
         self.thread = threading.Thread(target=self._run, daemon=True, name='vttt-online-link')
@@ -119,6 +121,11 @@ class OnlineLink(LanLink):
         if self.connected:
             self.connected = False
             self.events.put(('disconnected', None))
+
+    def close(self, leave=True):
+        """A disconnected guest can keep its reservation while returning to the menu."""
+        self.leave_on_close = leave
+        super().close()
 
     def _run(self):
         while not self.stop.is_set():
@@ -190,7 +197,7 @@ class OnlineLink(LanLink):
                 self.server_connected = False
                 self._disconnected()
                 if sock:
-                    if self.stop.is_set():
+                    if self.stop.is_set() and self.leave_on_close:
                         try:
                             sock.sendall(encode(dict(type='leave')))
                         except OSError:

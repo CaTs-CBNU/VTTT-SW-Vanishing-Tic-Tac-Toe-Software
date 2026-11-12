@@ -90,7 +90,8 @@ class LanController:
             if self.online:
                 from .online_transport import OnlineDirectory
                 self.discovery = OnlineDirectory(self.app.config['online_host'],
-                                                 self.app.config.get('online_port', 24040))
+                                                 self.app.config.get('online_port', 24040),
+                                                 self.app.profile.relay_identity())
             else:
                 self.discovery = Discovery(self.app.config.get('discovery_port', 44244))
         return self.discovery
@@ -159,7 +160,7 @@ class LanController:
         self.view_key = self.presented_key = None
         if self.online:
             from .online_transport import OnlineLink
-            self.link = OnlineLink(room)
+            self.link = OnlineLink(room, token=self.app.profile.relay_identity())
         else:
             self.link = LanLink(room=room)
         try:
@@ -168,12 +169,15 @@ class LanController:
             self.error = '방 재검색을 사용할 수 없습니다'
         self.app.go('lan_wait')
 
-    def close(self):
+    def close(self, preserve_room=False):
         if self.creating:
             self.creating.cancel()
             self.creating = None
         if self.link:
-            self.link.close()
+            if self.online:
+                self.link.close(leave=not preserve_room)
+            else:
+                self.link.close()
         if self.discovery:
             self.discovery.close()
         self.link = self.discovery = None
@@ -183,7 +187,8 @@ class LanController:
 
     def return_to_menu(self):
         """Abandon the old session locally without waiting for the missing opponent."""
-        self.close()
+        preserve = self.online and self.reconnecting and not self.link.is_host
+        self.close(preserve_room=preserve)
         app = self.app
         app.cancel_ai()
         app.game = self.game = None
@@ -322,6 +327,7 @@ class LanController:
         self.view_key = key
         if self.role != 'host':
             self.game = remote
+            self.sequence = max(self.sequence, state['ack'])
             self.pending = {seq: msg for seq, msg in self.pending.items() if seq > state['ack']}
         app.human_mark = self.host_mark if self.role == 'host' else -self.host_mark
         app.local_first_mark = app.human_mark

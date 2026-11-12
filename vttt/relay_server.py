@@ -119,8 +119,11 @@ class RelayServer:
                 reply = dict(type='created', id=room.id, number=room.number, token=room.host_token)
                 LOG.info('Room %s created', number)
             elif operation == 'list':
+                identity = request.get('token', '')
                 reply = dict(type='rooms', rooms=[dict(id=r.id, number=r.number)
-                             for r in self.rooms.values() if 'host' in r.peers and not r.guest_token])
+                             for r in self.rooms.values() if 'host' in r.peers and 'guest' not in r.peers and
+                             (not r.guest_token or (isinstance(identity, str) and
+                              secrets.compare_digest(identity, r.guest_token)))])
             elif operation == 'connect':
                 room = self.rooms.get(request.get('room'))
                 if room is None:
