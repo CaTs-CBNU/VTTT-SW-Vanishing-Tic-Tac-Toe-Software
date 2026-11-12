@@ -98,7 +98,14 @@ python3 -m vttt.relay_server --check 10.255.81.76 --port 24040
 
 ## 5. 두 게임기 실행 및 입장
 
-**두 기기 모두** 프로젝트 폴더에서 서버 주소를 지정해 실행합니다.
+기본 `configs/runtime.json`에는 `10.255.81.76:24040`이 설정되어 있습니다.
+**두 기기 모두** 프로젝트 폴더에서 추가 주소 옵션 없이 실행합니다.
+
+```bash
+bash scripts/run_hardware.sh
+```
+
+다른 서버에 접속하거나 설정 파일의 주소를 덮어쓰려면 실행 옵션을 지정합니다.
 
 ```bash
 bash scripts/run_hardware.sh --online-server 10.255.81.76:24040
@@ -118,7 +125,7 @@ python3 -m vttt --simulate --online-server 10.255.81.76:24040 --profile runtime/
 5. 착수한 말이 양쪽 화면에 같은 위치로 나타나는지, 상대 차례 입력이 거부되는지 확인합니다.
 6. 5번 길게 누르기로 양쪽 일시정지, 계속하기, 대국 종료와 재대국을 확인합니다.
 
-주소를 매번 옵션으로 주는 대신 기존 `configs/runtime.json`에 다음 두 항목을 추가할 수도 있습니다.
+`configs/runtime.json`의 기본 서버 주소는 다음 두 항목으로 변경할 수 있습니다.
 CLI 옵션이 파일의 주소보다 우선합니다. 기존 JSON의 다른 항목은 유지하세요.
 
 ```json
