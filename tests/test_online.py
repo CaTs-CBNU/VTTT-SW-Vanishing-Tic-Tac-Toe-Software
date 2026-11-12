@@ -4,6 +4,8 @@ import asyncio
 import json
 import threading
 import unittest
+from concurrent.futures import Future
+from unittest.mock import Mock, patch
 
 import test_lan as lan_tests
 from vttt.buttons import ButtonEvent
@@ -67,6 +69,35 @@ class OnlineIntegrationTests(lan_tests.LanIntegrationTests):
         self.assertIsNone(self.host.lan.link)
         self.assertIn('--online-server', self.host.notice)
         self.assertIsNone(self.host.game)
+
+    def test_create_progress_failure_and_retry_are_visible(self):
+        future = Future()
+        directory = Mock()
+        directory.create_async.return_value = future
+        with patch.object(self.host.lan, '_discovery', return_value=directory):
+            self.host.lan.host()
+        self.assertEqual(self.host.screen, 'lan_connecting')
+        self.assertIsNone(self.host.lan.link)
+        future.set_exception(OSError('connection refused'))
+        self.host.tick()
+        self.assertEqual(self.host.screen, 'lan_error')
+        self.assertEqual(self.host.lan.error, '서버 연결 실패')
+        self.host.handle(ButtonEvent(8, 'short'))
+        self.pump(lambda: self.host.screen == 'lan_lobby' and self.host.lan.link.server_connected)
+
+    def test_back_during_create_ignores_late_response(self):
+        future = Future()
+        future.set_running_or_notify_cancel()
+        directory = Mock()
+        directory.create_async.return_value = future
+        with patch.object(self.host.lan, '_discovery', return_value=directory):
+            self.host.lan.host()
+        self.host.handle(ButtonEvent(1, 'short'))
+        self.assertEqual(self.host.screen, 'connection')
+        future.set_result(('stale room', 'stale token'))
+        self.host.tick()
+        self.assertEqual(self.host.screen, 'connection')
+        self.assertIsNone(self.host.lan.link)
 
 
 class RelayProtocolTests(unittest.IsolatedAsyncioTestCase):

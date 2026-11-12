@@ -292,7 +292,7 @@ def draw_connectivity(r, canvas, app):
                 art(5, 'search_room_button_' + ui.mode)
                 r.strip(canvas, 7, 'UI 데모 · 실제 연결 없음' if ui.demo else
                         '같은 Wi-Fi에 연결하세요' if ui.mode == 'local' else
-                        '중계 서버에 연결합니다' if app.config.get('online_host') else
+                        '4번 방 만들기 / 5번 방 찾기' if app.config.get('online_host') else
                         '--online-server로 서버 주소를 설정하세요')
             elif not ui.room_ready:
                 art(5, 'making_room_status' if screen == 'room_create' else 'searching_room_status')

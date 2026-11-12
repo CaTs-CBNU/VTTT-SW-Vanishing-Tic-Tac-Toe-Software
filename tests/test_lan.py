@@ -129,6 +129,7 @@ class LanIntegrationTests(unittest.TestCase):
 
     def test_multicast_discovery_lists_a_real_host(self):
         self.host.lan.host()
+        self.pump(lambda: self.host.lan.link is not None)
         self.assertIsNotNone(self.host.lan.link, self.host.notice)
         self.guest.lan.search()
         self.pump(lambda: any(r.id == self.host.lan.link.room.id for r in self.guest.lan.rooms))

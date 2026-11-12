@@ -10,7 +10,18 @@ def draw_lan(r, canvas, app):
         r.tile(canvas, button, '방 번호', footer=footer)
         x, y = r.origin(button)
         r.text(ImageDraw.Draw(canvas), (x + 120, y + 128), number, 68)
-    if screen == 'lan_search':
+    if screen in ('lan_connecting', 'lan_error'):
+        failed = screen == 'lan_error'
+        r.tile(canvas, 2, '온라인 방 만들기' if lan.online else '방 만들기')
+        r.tile(canvas, 5, lan.error if failed else '서버 연결 중' + '.' * (int(app.clock() * 2) % 4),
+               ('주소·포트와 서버 실행을', '확인한 뒤 다시 시도하세요') if failed else
+               ('서버에 방을 요청합니다', '잠시 기다려 주세요'))
+        r.tile(canvas, 7, '접속할 서버', (app.config.get('online_host', ''),
+                                       str(app.config.get('online_port', 24040))))
+        if failed:
+            r.tile(canvas, 8, '다시 시도')
+        r.tile(canvas, 9, '1번: 돌아가기')
+    elif screen == 'lan_search':
         r.tile(canvas, 2, '방 찾기', ('중계 서버의 방' if lan.online else '같은 Wi-Fi의 방',))
         r.tile(canvas, 3, '다시 검색')
         rooms = lan.rooms[lan.room_page * 4:lan.room_page * 4 + 4]
@@ -30,6 +41,15 @@ def draw_lan(r, canvas, app):
         number = lan.link.room.number if lan.link else ''
         room_tile(5, number, '상대 입장을 기다립니다' if screen == 'lan_lobby' else
                   '방장이 모드를 고릅니다' if lan.synced else '방에 연결 중입니다')
+        if lan.online:
+            connected = lan.link and lan.link.server_connected
+            elapsed = app.clock() - lan.connection_started if lan.connection_started is not None else 0
+            status = ('상대 입장 대기' if screen == 'lan_lobby' else '방장 선택 대기') if connected else (
+                '서버 연결 재시도 중' if elapsed >= 5 else '서버 연결 중')
+            r.tile(canvas, 6, '서버 연결 완료' if connected else status,
+                   (status,) if connected else ('서버 실행과 주소를 확인하세요',))
+            r.tile(canvas, 7, '접속할 서버', (app.config.get('online_host', ''),
+                                           str(app.config.get('online_port', 24040))))
     elif screen == 'lan_rps':
         r.tile(canvas, 2, '선공 정하기', ('가위바위보',))
         hands = ('sissor_button', 'rock_button', 'paper_button')

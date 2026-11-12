@@ -74,6 +74,8 @@ class LanController:
         self.my_pick = None
         self.other_pick = None
         self.online = False
+        self.creating = None
+        self.connection_started = None
 
     @property
     def role(self):
@@ -107,18 +109,27 @@ class LanController:
         if not self._select_network():
             return
         self.close()
+        self.error = ''
         try:
             if self.online:
-                from .online_transport import OnlineLink
-                room, token = self._discovery().create()
-                self.link = OnlineLink(room, host=True, token=token)
+                self.app.go('lan_connecting')
+                self.creating = self._discovery().create_async()
+                return
             else:
                 self.link = LanLink(host=True)
                 self._discovery().advertise(self.link.room)
         except (OSError, ValueError):
-            self.close()
-            self.app.message('방 생성 실패: 네트워크 권한을 확인하세요')
+            self._host_error()
             return
+        self._host_ready()
+
+    def _host_error(self):
+        self.close()
+        self.error = '서버 연결 실패' if self.online else '방 생성 실패'
+        self.app.go('lan_error')
+
+    def _host_ready(self):
+        self.connection_started = self.app.clock()
         self.active, self.synced = True, False
         self.phase, self.stage, self.revision = 'lobby', 0, 0
         self.match_id, self.game = '', None
@@ -140,6 +151,7 @@ class LanController:
     def join(self, room):
         self.close()
         self.selected_room = room
+        self.connection_started = self.app.clock()
         self.active, self.synced = True, False
         self.phase, self.stage, self.revision = 'lobby', -1, -1
         self.ack = self.sequence = 0
@@ -157,6 +169,9 @@ class LanController:
         self.app.go('lan_wait')
 
     def close(self):
+        if self.creating:
+            self.creating.cancel()
+            self.creating = None
         if self.link:
             self.link.close()
         if self.discovery:
@@ -361,6 +376,20 @@ class LanController:
 
     def tick(self):
         app = self.app
+        if self.creating is not None and self.creating.done():
+            future, self.creating = self.creating, None
+            try:
+                from .online_transport import OnlineLink
+                room, token = future.result()
+                self.link = OnlineLink(room, host=True, token=token)
+                self._host_ready()
+            except (OSError, ValueError):
+                self._host_error()
+        if self.online and app.screen in ('lan_connecting', 'lan_lobby', 'lan_wait'):
+            step = int(app.clock() * 2)
+            if step != self.animation_step:
+                self.animation_step = step
+                app.animate()
         if app.screen in ('lan_search', 'lan_confirm') and self.discovery:
             if self.online and self.error != self.discovery.error:
                 self.error = self.discovery.error
@@ -448,6 +477,14 @@ class LanController:
     def handle(self, event):
         app, b = self.app, event.button
         screen = app.screen
+        if screen in ('lan_connecting', 'lan_error'):
+            if event.kind == 'short':
+                if b == 1:
+                    self.close()
+                    app.go('connection')
+                elif b == 8 and screen == 'lan_error':
+                    self.host()
+            return True
         if screen == 'lan_closed':
             if event.kind == 'short' and b == 1:
                 app.go('menu')

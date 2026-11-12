@@ -7,6 +7,7 @@ import socket
 import threading
 import time
 import uuid
+from concurrent.futures import Future
 
 from .lan_transport import LanLink, MAX_FRAME, Room, VERSION, encode
 
@@ -46,6 +47,19 @@ class OnlineDirectory:
         if value.get('type') != 'created' or not all(isinstance(value.get(k), str) for k in ('id', 'number', 'token')):
             raise ValueError('bad room reservation')
         return Room(value['id'], value['number'], self.host, self.port), value['token']
+
+    def create_async(self):
+        """Reserve a room without blocking status rendering or the back button."""
+        future = Future()
+        def work():
+            if not future.set_running_or_notify_cancel():
+                return
+            try:
+                future.set_result(self.create())
+            except Exception as exc:
+                future.set_exception(exc)
+        threading.Thread(target=work, daemon=True, name='vttt-online-create').start()
+        return future
 
     def _run(self):
         while not self.stop.is_set():
@@ -95,6 +109,7 @@ class OnlineLink(LanLink):
         self.outgoing = queue.Queue(maxsize=128)
         self.stop = threading.Event()
         self.connected = self.ever_connected = False
+        self.server_connected = False
         self.socket = self.listener = None
         self.heartbeat, self.timeout = .5, 4.0
         self.thread = threading.Thread(target=self._run, daemon=True, name='vttt-online-link')
@@ -132,6 +147,7 @@ class OnlineLink(LanLink):
                             if kind != 'welcome' or value.get('version') != VERSION:
                                 raise ValueError('bad relay welcome')
                             welcomed = True
+                            self.server_connected = True
                         elif kind == 'peer_ready':
                             while not self.outgoing.empty():
                                 try:
@@ -171,6 +187,7 @@ class OnlineLink(LanLink):
             except (OSError, ValueError, TypeError):
                 pass
             finally:
+                self.server_connected = False
                 self._disconnected()
                 if sock:
                     if self.stop.is_set():
