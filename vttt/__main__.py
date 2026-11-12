@@ -13,6 +13,7 @@ os.environ.setdefault("OMP_NUM_THREADS", "1")
 def main(argv=None):
     parser = argparse.ArgumentParser(description="다이내믹 틱택토 · Raspberry Pi 4 / PC")
     parser.add_argument("--simulate", action="store_true", help="PC에서 9개 LCD와 버튼 시뮬레이션")
+    parser.add_argument("--online-server", metavar="HOST:PORT", help="온라인 대국 중계 서버 (예: 10.255.81.76:24040)")
     parser.add_argument("--diagnostic", action="store_true", help="버튼/LCD 번호 확인 화면으로 시작")
     parser.add_argument("--hardware-config", type=Path)
     parser.add_argument("--runtime-config", type=Path)
@@ -31,6 +32,11 @@ def main(argv=None):
         from .app import Application
         hardware = hardware_config(args.hardware_config)
         runtime = runtime_config(args.runtime_config)
+        if args.online_server:
+            host, separator, port = args.online_server.rpartition(":")
+            if not separator or not host or not port.isascii() or not port.isdigit() or not 1 <= int(port) <= 65535:
+                parser.error("--online-server에는 HOST:PORT 형식의 주소를 입력하세요")
+            runtime["online_host"], runtime["online_port"] = host, int(port)
         runtime["demo_connectivity"] = args.demo_connectivity
         if args.profile:
             runtime["profile"] = str(args.profile.resolve())

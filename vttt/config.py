@@ -43,6 +43,10 @@ def hardware_config(path=None):
 def runtime_config(path=None):
     from .rules import MODES
     cfg = read_config(path or ROOT / "configs/runtime.json")
+    if 'online_host' in cfg and (not isinstance(cfg['online_host'], str) or not cfg['online_host'].strip()):
+        raise ValueError('online_host must be a nonempty hostname or IP address')
+    if 'online_port' in cfg and (type(cfg['online_port']) is not int or not 1 <= cfg['online_port'] <= 65535):
+        raise ValueError('online_port must be 1..65535')
     if cfg["default_mode"] not in MODES or cfg["opponent"] not in ("ai", "local"):
         raise ValueError("게임 모드/상대 설정을 확인하세요")
     if cfg["difficulty"] not in ("easy", "normal", "hard"):

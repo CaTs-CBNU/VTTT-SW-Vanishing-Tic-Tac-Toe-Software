@@ -73,6 +73,7 @@ class LanController:
         self.opponent_ready = False
         self.my_pick = None
         self.other_pick = None
+        self.online = False
 
     @property
     def role(self):
@@ -84,15 +85,37 @@ class LanController:
 
     def _discovery(self):
         if self.discovery is None:
-            self.discovery = Discovery(self.app.config.get('discovery_port', 44244))
+            if self.online:
+                from .online_transport import OnlineDirectory
+                self.discovery = OnlineDirectory(self.app.config['online_host'],
+                                                 self.app.config.get('online_port', 24040))
+            else:
+                self.discovery = Discovery(self.app.config.get('discovery_port', 44244))
         return self.discovery
 
+    def _select_network(self):
+        online = self.app.connectivity.mode == 'online'
+        if online and not self.app.config.get('online_host'):
+            self.app.message('중계 서버 주소를 --online-server로 설정하세요')
+            return False
+        if online != self.online:
+            self.close()
+            self.online = online
+        return True
+
     def host(self):
+        if not self._select_network():
+            return
         self.close()
         try:
-            self.link = LanLink(host=True)
-            self._discovery().advertise(self.link.room)
-        except OSError:
+            if self.online:
+                from .online_transport import OnlineLink
+                room, token = self._discovery().create()
+                self.link = OnlineLink(room, host=True, token=token)
+            else:
+                self.link = LanLink(host=True)
+                self._discovery().advertise(self.link.room)
+        except (OSError, ValueError):
             self.close()
             self.app.message('방 생성 실패: 네트워크 권한을 확인하세요')
             return
@@ -104,6 +127,8 @@ class LanController:
         self.app.go('lan_lobby')
 
     def search(self):
+        if not self._select_network():
+            return
         try:
             self._discovery()
             self.error = ''
@@ -120,7 +145,11 @@ class LanController:
         self.ack = self.sequence = 0
         self.pending = {}
         self.view_key = self.presented_key = None
-        self.link = LanLink(room=room)
+        if self.online:
+            from .online_transport import OnlineLink
+            self.link = OnlineLink(room)
+        else:
+            self.link = LanLink(room=room)
         try:
             self._discovery()
         except OSError:
@@ -333,6 +362,9 @@ class LanController:
     def tick(self):
         app = self.app
         if app.screen in ('lan_search', 'lan_confirm') and self.discovery:
+            if self.online and self.error != self.discovery.error:
+                self.error = self.discovery.error
+                app.touch()
             rooms = self.discovery.list_rooms()
             if rooms != self.rooms:
                 self.rooms = rooms

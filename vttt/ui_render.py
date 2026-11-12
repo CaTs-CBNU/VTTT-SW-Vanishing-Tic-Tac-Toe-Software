@@ -284,14 +284,16 @@ def draw_connectivity(r, canvas, app):
             art(5, 'multiplay_icon')
             art(6, 'online_multi_button')
             art(7, 'local_multi_info'); art(9, 'online_multi_info')
-            r.strip(canvas, 5, 'UI 데모 · 실제 통신 준비 중' if ui.demo else '같은 Wi-Fi에서 로컬 대국')
+            r.strip(canvas, 5, 'UI 데모 · 실제 통신 준비 중' if ui.demo else '로컬 / 중계 서버 대국')
         else:
             art(2, ui.mode + '_multi_title')
             if screen == 'connection':
                 art(4, 'create_room_button_' + ui.mode)
                 art(5, 'search_room_button_' + ui.mode)
                 r.strip(canvas, 7, 'UI 데모 · 실제 연결 없음' if ui.demo else
-                        '같은 Wi-Fi에 연결하세요' if ui.mode == 'local' else '온라인 통신은 준비 중')
+                        '같은 Wi-Fi에 연결하세요' if ui.mode == 'local' else
+                        '중계 서버에 연결합니다' if app.config.get('online_host') else
+                        '--online-server로 서버 주소를 설정하세요')
             elif not ui.room_ready:
                 art(5, 'making_room_status' if screen == 'room_create' else 'searching_room_status')
                 art(8, 'multi_game_disabled_button')

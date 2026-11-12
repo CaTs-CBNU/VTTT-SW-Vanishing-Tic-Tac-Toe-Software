@@ -11,7 +11,7 @@ def draw_lan(r, canvas, app):
         x, y = r.origin(button)
         r.text(ImageDraw.Draw(canvas), (x + 120, y + 128), number, 68)
     if screen == 'lan_search':
-        r.tile(canvas, 2, '방 찾기', ('같은 Wi-Fi의 방',))
+        r.tile(canvas, 2, '방 찾기', ('중계 서버의 방' if lan.online else '같은 Wi-Fi의 방',))
         r.tile(canvas, 3, '다시 검색')
         rooms = lan.rooms[lan.room_page * 4:lan.room_page * 4 + 4]
         for button, room in zip((4, 5, 6, 8), rooms):
@@ -25,7 +25,8 @@ def draw_lan(r, canvas, app):
         room_tile(5, lan.selected_room.number, '이 방이 맞나요?')
         image_tile(r, canvas, 8, 'enter_button')
     elif screen in ('lan_lobby', 'lan_wait'):
-        r.tile(canvas, 2, '로컬 통신', ('같은 Wi-Fi로 대국',))
+        r.tile(canvas, 2, '온라인 통신' if lan.online else '로컬 통신',
+               ('중계 서버로 대국' if lan.online else '같은 Wi-Fi로 대국',))
         number = lan.link.room.number if lan.link else ''
         room_tile(5, number, '상대 입장을 기다립니다' if screen == 'lan_lobby' else
                   '방장이 모드를 고릅니다' if lan.synced else '방에 연결 중입니다')
@@ -80,7 +81,8 @@ def draw_wifi_real(r, canvas, app):
             r.tile(canvas, 5, '검색 결과 없음', (ui.error or '공유기를 찾지 못했습니다', 'Wi-Fi 설정을 확인하세요'))
         else:
             for button, network in zip((4, 5, 6, 8), ui.networks):
-                r.tile(canvas, button, '연결됨' if network.active else '잠금' if network.secured else '개방',
+                r.tile(canvas, button, '연결됨' if network.active else '저장됨' if getattr(network, 'saved_uuid', '') else
+                       '잠금' if network.secured else '개방',
                        (network.ssid, f'신호 {network.signal}%'), footer='눌러서 연결')
         r.tile(canvas, 7, '이전 목록')
         r.tile(canvas, 9, '다음 목록')
@@ -103,7 +105,8 @@ def draw_wifi_real(r, canvas, app):
         r.tile(canvas, 5, ui.network.ssid, ('Wi-Fi에 연결되었습니다',) if ui.result == 'success' else (ui.error,))
         if ui.result != 'success':
             r.tile(canvas, 4, '비밀번호 다시 입력', ('이전 비밀번호는 지웠어요',))
-            r.tile(canvas, 6, '다시 시도', ('4번에서 비밀번호 입력',))
+            r.tile(canvas, 6, '다시 시도', ('저장된 연결로 재시도' if getattr(ui.network, 'saved_uuid', '') else
+                                         '4번에서 비밀번호 입력',))
         r.tile(canvas, 8, '다른 네트워크 선택')
     if app.notice:
         r.strip(canvas, 2, app.notice)

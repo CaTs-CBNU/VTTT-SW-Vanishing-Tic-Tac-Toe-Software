@@ -154,12 +154,9 @@ class ConnectivityUI:
             elif b == 3:
                 self.open_wifi(); self.scan()
             elif screen == 'connection' and b in (4, 5):
-                if self.mode == 'local' and not self.demo:
+                if not self.demo:
                     if b == 4: app.lan.host()
                     else: app.lan.search()
-                    return True
-                if self.mode == 'online' and not self.demo:
-                    app.message('온라인 통신은 아직 지원하지 않습니다')
                     return True
                 self.room_ready = False
                 self.deadline = app.clock() + .8
@@ -189,7 +186,7 @@ class ConnectivityUI:
                     if index < len(self.networks):
                         self.network = self.networks[index]
                         self.forget(); self.uppercase = False
-                        if self.network.secured: app.go('wifi_password')
+                        if self.network.secured and not getattr(self.network, 'saved_uuid', ''): app.go('wifi_password')
                         else: self.connect()
         elif screen == 'wifi_password':
             if b == 1:
@@ -226,15 +223,17 @@ class ConnectivityUI:
             elif b == 4:
                 app.go('wifi_password' if self.network.secured else 'wifi_scan')
             elif b == 5:
-                if self.demo or not self.network.secured: self.connect()
+                if self.demo or not self.network.secured or getattr(self.network, 'saved_uuid', ''): self.connect()
                 else: app.go('wifi_password')
             elif b == 6 and self.demo:
                 self.result = 'success' if self.result == 'failure' else 'failure'; app.touch()
             elif b == 6 and not self.demo:
-                if self.network.secured: app.go('wifi_password')
+                if self.network.secured and not getattr(self.network, 'saved_uuid', ''): app.go('wifi_password')
                 else: self.connect()
             elif b == 8:
-                self.forget(); app.go('wifi_scan')
+                self.forget()
+                if self.demo: app.go('wifi_scan')
+                else: self.scan()
         return True
 
     def tick(self):

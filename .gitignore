@@ -209,6 +209,7 @@ __marimo__/
 
 # 맥 캐시파일
 *.md
+!docs/ONLINE_SERVER_KO.md
 
 # 프로필 설정
 runtime/profile.txt
