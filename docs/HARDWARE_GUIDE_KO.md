@@ -1,5 +1,27 @@
 # 다이내믹 틱택토 실행 안내
 
+## 버튼의 눌림·떼짐 원시 신호 확인
+
+짧게 눌렀는데 길게 누르기로 동작하면 GPIO의 실제 LOW/HIGH부터 확인합니다.
+게임과 진단이 같은 GPIO를 동시에 제어하지 않도록 수동 실행 앱은 종료하고,
+자동 실행을 등록한 기기는 먼저 서비스를 중지합니다.
+
+```bash
+sudo systemctl stop vttt.service
+bash scripts/check_button.sh --button 5
+```
+
+기본 15초 동안 동작합니다. 처음에는 버튼에서 손을 떼고, 한 번 짧게 눌렀다 뗀 뒤 4초 기다립니다.
+`RAW`는 실제 GPIO 값이고 `interpreted`는 현재 설정에 따라 해석한 상태입니다.
+현재 기본 active-high 설정은 안 누름 RAW=0, 누름 RAW=1입니다.
+버튼을 뗐는데도 `PRESSED`이거나, 손을 대지 않았는데 RAW가 계속 바뀌면 설정·배선을 확인해야 합니다.
+진단 결과만으로 배선 문제와 설정 문제를 단정하지 말고 실제 버튼 동작 시점과 비교하세요.
+5번은 기본 BCM 13입니다. 설정을 바꿨다면 진단 프로그램은 해당 JSON의 핀을 사용합니다.
+
+```bash
+sudo systemctl start vttt.service
+```
+
 ## 부팅 시 자동 실행
 
 먼저 `bash scripts/run_hardware.sh`로 LCD·버튼 앱이 정상 실행되는지 확인하세요.
