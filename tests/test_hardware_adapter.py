@@ -3,14 +3,61 @@
 import sys
 import types
 import unittest
+import json
+import queue
+import tempfile
+from pathlib import Path
 from unittest.mock import patch
 from PIL import Image, ImageDraw
 
-from vttt.backends import RaspberryPiBackend
-from vttt.config import hardware_config
+from vttt.backends import RaspberryPiBackend, RecoveryButtonFilter
+from vttt.config import hardware_config, button_active_high_for
 
 
 class HardwareAdapterTests(unittest.TestCase):
+    def test_local_button_override_is_scoped_and_validated(self):
+        base = hardware_config()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'configs').mkdir()
+            source = root / 'configs/hardware.json'
+            source.write_text(json.dumps(base))
+            local = root / 'configs/hardware.local.json'
+            local.write_text(json.dumps({'button_active_high_overrides': {'5': False}}))
+            with patch('vttt.config.ROOT', root):
+                cfg = hardware_config()
+                self.assertFalse(button_active_high_for(cfg, 5))
+                self.assertTrue(all(button_active_high_for(cfg, b) for b in (1, 2, 3, 4, 6, 7, 8, 9)))
+                self.assertTrue(button_active_high_for(hardware_config(source), 5))
+                for invalid in ({'0': False}, {'10': False}, {'5': 'false'}, [False]):
+                    local.write_text(json.dumps({'button_active_high_overrides': invalid}))
+                    with self.assertRaises(ValueError):
+                        hardware_config()
+
+    def test_active_low_fifth_button_tap_and_hold_through_gpio_polling(self):
+        cfg = hardware_config()
+        cfg['button_active_high_overrides'] = {'5': False}
+        for samples, expected in (
+                ([(0, 1), (.1, 0), (.15, 0), (.2, 1), (.25, 1), (4, 1)], ['short']),
+                ([(0, 1), (.1, 0), (.15, 0), (3.2, 0), (3.3, 1), (3.35, 1)], ['long'])):
+            with self.subTest(expected=expected):
+                index = [0]
+                backend = RaspberryPiBackend.__new__(RaspberryPiBackend)
+                backend.cfg = cfg
+                backend.events = queue.Queue()
+                backend.input_error = None
+                backend.button_filter = RecoveryButtonFilter(cfg['debounce_ms'], cfg['long_press_ms'])
+                backend.GPIO = types.SimpleNamespace(input=lambda pin: samples[index[0]][1] if pin == 13 else 0)
+                backend.stop = types.SimpleNamespace(
+                    is_set=lambda: index[0] >= len(samples),
+                    wait=lambda delay: index.__setitem__(0, index[0] + 1))
+                with patch('vttt.backends.time.monotonic', side_effect=lambda: samples[index[0]][0]):
+                    backend._poll_buttons()
+                self.assertIsNone(backend.input_error)
+                events = list(backend.events.queue)
+                self.assertEqual([event.kind for event in events], expected)
+                self.assertTrue(all(event.button == 5 for event in events))
+
     def make_modules(self, fail_at=None):
         self.pins = {}
         self.frames = []

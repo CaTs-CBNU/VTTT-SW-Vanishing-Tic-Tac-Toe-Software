@@ -44,6 +44,8 @@ def main(argv=None):
         ai = GameAI(runtime)
         logging.info("AI: %s", ai.status)
         logging.info("Buttons: BCM %s, active_%s", hardware["button_pins"], "high" if hardware["button_active_high"] else "low")
+        if hardware.get('button_active_high_overrides'):
+            logging.info('Button active-high overrides: %s', hardware['button_active_high_overrides'])
         logging.info("LCD CS: BCM %s", hardware["lcd_cs_pins"])
         if args.check:
             from .rules import Game

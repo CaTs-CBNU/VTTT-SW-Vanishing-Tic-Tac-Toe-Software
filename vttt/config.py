@@ -16,12 +16,20 @@ def read_config(path):
 
 def hardware_config(path=None):
     cfg = read_config(path or ROOT / "configs/hardware.json")
+    local = ROOT / 'configs/hardware.local.json'
+    if path is None and local.is_file():
+        cfg.update(read_config(local))
     for key in ("button_pins", "lcd_cs_pins"):
         pins = cfg[key]
         if len(pins) != 9 or len(set(pins)) != 9 or any(type(p) is not int or not 0 <= p <= 27 for p in pins):
             raise ValueError(key + ": 서로 다른 BCM GPIO 9개가 필요합니다")
     if type(cfg["button_active_high"]) is not bool:
         raise ValueError("button_active_high must be a JSON boolean")
+    overrides = cfg.get('button_active_high_overrides', {})
+    if not isinstance(overrides, dict) or any(
+            key not in {str(i) for i in range(1, 10)} or type(value) is not bool
+            for key, value in overrides.items()):
+        raise ValueError('button_active_high_overrides: 버튼 번호 1~9와 true/false를 지정하세요')
     pins = cfg["button_pins"] + cfg["lcd_cs_pins"] + [cfg["dc_pin"], cfg["reset_pin"], 10, 11]
     if len(pins) != len(set(pins)):
         raise ValueError("버튼·CS·DC·RESET·SPI 핀이 겹칩니다")
@@ -38,6 +46,11 @@ def hardware_config(path=None):
     if not 500 <= cfg["long_press_ms"] <= 5000:
         raise ValueError("long_press_ms must be 500..5000")
     return cfg
+
+
+def button_active_high_for(cfg, button):
+    """Override interpretation only; keep the measured circuit's existing GPIO pull."""
+    return cfg.get('button_active_high_overrides', {}).get(str(button), cfg['button_active_high'])
 
 
 def runtime_config(path=None):

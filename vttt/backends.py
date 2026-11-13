@@ -6,6 +6,7 @@ import threading
 import time
 
 from .buttons import ButtonEvent, ButtonFilter
+from .config import button_active_high_for
 
 LOG = logging.getLogger(__name__)
 
@@ -168,7 +169,7 @@ class RaspberryPiBackend:
             while not self.stop.is_set():
                 now = time.monotonic()
                 for i, pin in enumerate(self.cfg["button_pins"], 1):
-                    pressed = bool(self.GPIO.input(pin)) == self.cfg["button_active_high"]
+                    pressed = bool(self.GPIO.input(pin)) == button_active_high_for(self.cfg, i)
                     for event in filt.feed(i, pressed, now):
                         self.events.put(event)
                 self.stop.wait(self.cfg["poll_ms"] / 1000)

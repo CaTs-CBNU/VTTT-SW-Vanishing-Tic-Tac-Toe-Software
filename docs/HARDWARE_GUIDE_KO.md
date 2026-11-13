@@ -1,5 +1,26 @@
 # 다이내믹 틱택토 실행 안내
 
+## 5번 버튼만 반대 극성인 기기
+
+버튼을 안 누름 → 누름 → 뗌의 RAW 값이 `1 → 0 → 1`이고 나머지 버튼은 active-high라면,
+**문제가 있는 기기에만** `configs/hardware.local.json`을 만듭니다.
+
+```json
+{
+  "button_active_high_overrides": {"5": false}
+}
+```
+
+이미 이 파일이 있다면 다른 설정을 보존하고 해당 항목을 추가합니다.
+기본 `hardware.json`을 읽은 뒤 기기별 설정을 덮어쓰며, 로컬 파일은 Git에 올리지 않습니다.
+명시적으로 `--hardware-config` 파일을 지정하면 그 파일만 사용합니다.
+버튼별 옵션은 신호 해석만 반전하며 기존 GPIO 풀업/풀다운은 유지합니다.
+현재 관찰한 신호를 바꾸지 않고, RAW=1을 RELEASED, RAW=0을 PRESSED로 해석합니다.
+전체 `button_active_high`를 바꾸면 다른 버튼도 바뀌므로 이 경우에는 전체 값을 변경하지 않습니다.
+서비스를 중지하고 `bash scripts/check_button.sh --button 5`로 짧게 누른 뒤
+`EVENT=SHORT`, 실제로 3초 이상 유지했을 때만 `EVENT=LONG`이 나오는지 확인합니다.
+확인 후 `sudo systemctl start vttt.service`로 게임을 실행합니다.
+
 ## 버튼의 눌림·떼짐 원시 신호 확인
 
 짧게 눌렀는데 길게 누르기로 동작하면 GPIO의 실제 LOW/HIGH부터 확인합니다.

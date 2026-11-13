@@ -5,7 +5,7 @@ import sys
 import time
 
 from .buttons import ButtonFilter
-from .config import hardware_config
+from .config import button_active_high_for, hardware_config
 
 
 def main():
@@ -20,7 +20,7 @@ def main():
     import RPi.GPIO as GPIO
     cfg = hardware_config(args.hardware_config)
     pin = cfg['button_pins'][args.button - 1]
-    active_high = cfg['button_active_high']
+    active_high = button_active_high_for(cfg, args.button)
     filt = ButtonFilter(cfg['debounce_ms'], cfg['long_press_ms'])
     # The selected switch can be held for diagnostic purposes, including non-centre switches.
     filt.long_buttons = {args.button}
@@ -28,7 +28,7 @@ def main():
     previous = None
     GPIO.setmode(GPIO.BCM)
     try:
-        GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_DOWN if active_high else GPIO.PUD_UP)
+        GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_DOWN if cfg['button_active_high'] else GPIO.PUD_UP)
         print('Button %d / BCM %d / active_%s / hold %.1fs' % (
             args.button, pin, 'high' if active_high else 'low', cfg['long_press_ms'] / 1000), flush=True)
         print('Start with the switch RELEASED. Tap once, release, then wait 4 seconds.', flush=True)
