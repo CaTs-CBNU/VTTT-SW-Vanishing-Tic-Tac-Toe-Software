@@ -6,6 +6,7 @@ from .rules import MODES
 from .connectivity_ui import SYMBOLS, NETWORK_SLOTS
 
 BG = '#F7F3EF'
+SELECTION = '#f1c72f'
 SHOP_THEMES = ('fishcat', 'squirrel', 'xmas', 'default', 'chiikawa1', 'chiikawa2')
 
 
@@ -13,7 +14,7 @@ def image_tile(renderer, canvas, button, name, selected=False):
     canvas.paste(renderer.art[name], renderer.origin(button))
     if selected:
         x, y = renderer.origin(button)
-        ImageDraw.Draw(canvas).rectangle((x+3, y+3, x+236, y+236), outline='#5579FF', width=5)
+        ImageDraw.Draw(canvas).rectangle((x+3, y+3, x+236, y+236), outline=SELECTION, width=10)
 
 
 def rps_prompt(renderer, canvas):
@@ -201,10 +202,10 @@ def draw_shop(r, canvas, app):
             d = ImageDraw.Draw(canvas)
             # Yellow dashed frame around the selected theme.
             for offset in range(8, 232, 30):
-                d.line((x+offset, y+6, x+min(offset+14, 232), y+6), fill='#FFCC25', width=10)
-                d.line((x+offset, y+234, x+min(offset+14, 232), y+234), fill='#FFCC25', width=10)
-                d.line((x+6, y+offset, x+6, y+min(offset+14, 232)), fill='#FFCC25', width=10)
-                d.line((x+234, y+offset, x+234, y+min(offset+14, 232)), fill='#FFCC25', width=10)
+                d.line((x+offset, y+6, x+min(offset+14, 232), y+6), fill=SELECTION, width=20)
+                d.line((x+offset, y+234, x+min(offset+14, 232), y+234), fill=SELECTION, width=20)
+                d.line((x+6, y+offset, x+6, y+min(offset+14, 232)), fill=SELECTION, width=20)
+                d.line((x+234, y+offset, x+234, y+min(offset+14, 232)), fill=SELECTION, width=20)
             r.text(d, (x+120, y+216), THEMES[key][0], 27, '#061B29')
     image_tile(r, canvas, 7, 'shop/shop_left_button')
     image_tile(r, canvas, 9, 'shop/shop_right_button')
@@ -227,7 +228,6 @@ def draw_setup(r, canvas, app):
     for b, key, name in ((4, 'easy', 'easy_level_button'), (5, 'normal', 'medium_level_button'),
                          (6, 'hard', 'high_level_button')):
         image_tile(r, canvas, b, name, app.pending_difficulty == key)
-    r.tile(canvas, 7, '지움')
     image_tile(r, canvas, 8, 'select_button')
 
 
@@ -255,7 +255,7 @@ def draw_duel(r, canvas, app):
         canvas.paste(r.art[hands[hand]].rotate(180), r.origin(b))
         if show and picks['top'] == hand:
             x, y = r.origin(b)
-            ImageDraw.Draw(canvas).rectangle((x+3, y+3, x+236, y+236), outline='#5579FF', width=5)
+            ImageDraw.Draw(canvas).rectangle((x+3, y+3, x+236, y+236), outline=SELECTION, width=10)
     for b, hand in ((7, 0), (8, 1), (9, 2)):
         image_tile(r, canvas, b, hands[hand], show and picks['bottom'] == hand)
     image_tile(r, canvas, 4, 'go_back_button')

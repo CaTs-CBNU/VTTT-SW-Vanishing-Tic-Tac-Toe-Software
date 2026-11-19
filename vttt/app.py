@@ -305,9 +305,6 @@ class Application:
             elif button in (4, 5, 6):
                 self.pending_difficulty = {4: "easy", 5: "normal", 6: "hard"}[button]
                 self.touch()
-            elif button == 7:
-                self.pending_difficulty = None
-                self.touch()
             elif button == 8:
                 if self.pending_difficulty is None:
                     self.message("난이도를 선택해주세요")
@@ -352,8 +349,6 @@ class Application:
                 self.resume()
             elif button == 6:
                 self.begin_match()
-            elif button == 8:
-                self.running = False
         elif self.screen == "result":
             if button == 4:
                 self.begin_match()

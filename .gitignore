@@ -213,4 +213,5 @@ __marimo__/
 
 # 프로필 설정
 runtime/profile.txt
+runtime/profile.json
 configs/hardware.local.json

@@ -31,6 +31,30 @@ class PieceRenderingTests(unittest.TestCase):
         self.app.close()
         self.temp.cleanup()
 
+    def test_pause_exit_and_difficulty_clear_displays_are_blank(self):
+        from vttt.render import BG
+        for screen, buttons in (('pause', (8,)), ('setup', (3, 7))):
+            self.app.go(screen)
+            canvas = self.renderer.draw(self.app)
+            for button in buttons:
+                x, y = self.renderer.origin(button)
+                self.assertEqual(canvas.crop((x, y, x + 240, y + 240)).tobytes(),
+                                 Image.new('RGB', (240, 240), BG).tobytes())
+
+    def test_difficulty_selection_has_thick_yellow_border(self):
+        self.app.pending_difficulty = 'normal'
+        self.app.go('setup')
+        canvas = self.renderer.draw(self.app)
+        for offset in range(10):
+            self.assertEqual(canvas.getpixel((243 + offset, 360)), (241, 199, 47))
+
+    def test_game_does_not_draw_corner_display_numbers(self):
+        with patch.object(self.renderer, 'text', wraps=self.renderer.text) as labels:
+            self.renderer.draw(self.app)
+        self.assertFalse(any(call.args[1] == (x + 215, y + 24)
+                             for call in labels.call_args_list
+                             for x, y in (self.renderer.origin(b) for b in range(1, 10))))
+
     def test_large_footer_wraps_without_clipping_into_neighbor_displays(self):
         from PIL import ImageChops, ImageDraw
         for text, size in (('상대 입장을 기다립니다', 34),

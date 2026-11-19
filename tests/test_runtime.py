@@ -334,6 +334,17 @@ class AppTests(unittest.TestCase):
     def press(self, button, kind="short"):
         self.app.handle(ButtonEvent(button, kind))
 
+    def test_removed_pause_exit_and_difficulty_clear_do_nothing(self):
+        self.app.go('pause')
+        self.press(8)
+        self.assertTrue(self.app.running)
+        self.assertEqual(self.app.screen, 'pause')
+        self.app.go('setup')
+        self.app.pending_difficulty = 'hard'
+        for button in (3, 7):
+            self.press(button)
+            self.assertEqual(self.app.pending_difficulty, 'hard')
+
     def test_start_menu_modes_and_return_routes(self):
         self.press(8)
         self.assertEqual(self.app.screen, "menu")

@@ -10,6 +10,7 @@ from .rules import MODES
 from .ui_render import image_tile, draw_setup, draw_rps, draw_duel, draw_shop, draw_settings, draw_result, draw_scores, draw_help, draw_connectivity
 
 BG, INK, BLUE, PINK, GREEN, ORANGE, RED = "#F7F3EF", "#45494C", "#5579FF", "#E965B9", "#45AD76", "#F0A030", "#E5383B"
+SELECTION = "#f1c72f"
 ASSETS = ROOT / "src/static/images"
 
 
@@ -126,7 +127,7 @@ class Renderer:
         x, y = self.origin(button)
         d = ImageDraw.Draw(canvas)
         d.rounded_rectangle((x + 6, y + 6, x + 234, y + 234), radius=15,
-                            fill="#FFFFFF" if selected else BG, outline=accent if selected else "#D7D4D0", width=3)
+                            fill="#FFFFFF" if selected else BG, outline=SELECTION if selected else "#D7D4D0", width=6 if selected else 3)
         self.text(d, (x + 120, y + 44), title, 31, accent)
         body_bottom = 190 if not footer else 230 - len(self.footer_lines(footer)) * 38 - 10
         for i, line in enumerate(lines):
@@ -222,7 +223,6 @@ class Renderer:
             self.tile(canvas, 4, "메인 메뉴", ("현재 대국 포기",))
             self.tile(canvas, 5, "계속하기", ("대국으로 복귀",), accent=GREEN, selected=True)
             self.tile(canvas, 6, "다시 시작", ("같은 설정으로", "새 대국 시작"))
-            self.tile(canvas, 8, "종료", ("프로그램 종료", "라즈베리파이는 유지"), accent=PINK)
         elif screen == "result":
             draw_result(self, canvas, app)
         elif screen == "final_board":
@@ -324,7 +324,6 @@ class Renderer:
                 ghost = ghost.filter(ImageFilter.GaussianBlur(2 + 10 * t))
                 ghost = Image.blend(ghost, Image.new("RGB", (240, 240), BG), t)
                 canvas.paste(ghost.crop((20, 36, 220, 196)), (x + 20, y + 36))
-            self.text(d, (x + 215, y + 24), str(button), 17, "#98938F")
             if action in swapping:
                 self.text(d, (x + 120, y + 26), "교환 예정", 17, ORANGE)
             # Blind shows only the piece just placed, and only during the reveal window.
