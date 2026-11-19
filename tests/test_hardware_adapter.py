@@ -62,6 +62,7 @@ class HardwareAdapterTests(unittest.TestCase):
         self.pins = {}
         self.frames = []
         self.resets = []
+        self.display_speeds = []
         owner = self
 
         class Pin:
@@ -88,6 +89,7 @@ class HardwareAdapterTests(unittest.TestCase):
 
         class Display:
             def __init__(self, spi, **kwargs):
+                owner.display_speeds.append(kwargs['baudrate'])
                 if fail_at is not None and len(owner.frames) == fail_at:
                     raise RuntimeError("synthetic initialization failure")
                 owner.assertIsNone(kwargs["rst"])
@@ -151,6 +153,25 @@ class HardwareAdapterTests(unittest.TestCase):
                 RaspberryPiBackend(hardware_config())
             self.assertTrue(all(pin.closed for pin in self.pins.values()))
             self.assertTrue(self.spi.closed)
+
+    def test_configured_spi_speed_is_used_and_restored_after_recovery(self):
+        for speed in (2000000, 6400000, 16000000):
+            with self.subTest(speed=speed):
+                cfg = hardware_config()
+                cfg['baudrate'] = speed
+                with patch.dict(sys.modules, self.make_modules()), patch('vttt.backends.time.sleep'):
+                    backend = RaspberryPiBackend(cfg)
+                    try:
+                        self.assertEqual(backend.spi.baudrate, speed)
+                        self.assertTrue(all(display_speed == speed for display_speed in self.display_speeds))
+                        backend.show(Image.new('RGB', (720, 720), 'black'))
+                        self.display_speeds.clear()
+                        backend._recover_displays()
+                        self.assertTrue(all(display_speed == min(speed, 4000000) for display_speed in self.display_speeds))
+                        self.assertEqual(backend.spi.baudrate, speed)
+                        self.assertEqual(cfg['baudrate'], speed)
+                    finally:
+                        backend.close()
 
     def test_active_low_config_and_screen_remapping(self):
         cfg = hardware_config()

@@ -64,9 +64,8 @@ class RaspberryPiBackend:
         import board
         import digitalio
         from adafruit_rgb_display import st7789
-        # Single-file update: use 6.4 MHz normally, 4 MHz during recovery.
+        # Honour the per-device SPI setting instead of forcing every unit to 6.4 MHz.
         cfg = dict(cfg)
-        cfg["baudrate"] = 6400000
         self.cfg, self.GPIO = cfg, GPIO
         self._display_class = st7789.ST7789
         self._last_frame = None
@@ -126,17 +125,17 @@ class RaspberryPiBackend:
 
     def _recover_displays(self):
         # Runs only in the main thread, never concurrently with an LCD write.
-        self.spi.baudrate = 4000000
-        LOG.info("Resetting all LCDs and redrawing at 4 MHz")
+        self.spi.baudrate = min(self.cfg['baudrate'], 4000000)
+        LOG.info("Resetting all LCDs and redrawing at %s Hz", self.spi.baudrate)
         self._reset_displays()
         self._recovery_notice_until = float("inf")
         if self._last_frame is not None:
             self.show(self._last_frame)
         # Future driver transactions use this rate through DisplaySPI.configure.
-        self.spi.baudrate = 6400000
+        self.spi.baudrate = self.cfg['baudrate']
         self._accept_after = time.monotonic()
         self._recovery_notice_until = self._accept_after + 3.0
-        LOG.info("LCD reset complete; normal speed restored to 6.4 MHz")
+        LOG.info("LCD reset complete; normal speed restored to %s Hz", self.spi.baudrate)
 
     def _with_recovery_hint(self, frame):
         from PIL import ImageDraw, ImageFont
