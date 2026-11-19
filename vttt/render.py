@@ -36,7 +36,9 @@ class Renderer:
         self.pages = {}
         self.icons = {}
         self.art = {}
-        for path in (ASSETS / "ui").glob("*.jpeg"):
+        for path in sorted((ASSETS / "ui").iterdir()):
+            if path.suffix.lower() not in (".jpeg", ".jpg", ".png"):
+                continue
             with Image.open(path) as img:
                 self.art[path.stem] = img.convert("RGB").resize((240, 240), Image.Resampling.LANCZOS)
         for group in ("result", "settings", "shop"):
@@ -88,22 +90,53 @@ class Renderer:
             font = self.font(size)
         draw.text(xy, text, font=font, fill=color, anchor="mm")
 
+    def footer_lines(self, text, size=34, max_width=212):
+        """Wrap Korean and Latin guidance without shrinking its enlarged font."""
+        lines, line = [], ""
+        font = self.font(size)
+        for paragraph in text.split("\n"):
+            line = ""
+            for word in paragraph.split():
+                candidate = line + (" " if line else "") + word
+                if line and font.getlength(candidate) > max_width:
+                    lines.append(line)
+                    line = ""
+                for char in (" " if line else "") + word:
+                    if line and font.getlength(line + char) > max_width:
+                        lines.append(line.rstrip())
+                        line = ""
+                    line += char
+            lines.append(line.rstrip())
+        return lines
+
+    def footer(self, canvas, button, text, size=34, color=INK, bottom=230, background=None):
+        x, y = self.origin(button)
+        d = ImageDraw.Draw(canvas)
+        lines = self.footer_lines(text, size)
+        height = size + 4
+        top = bottom - len(lines) * height
+        if background is not None:
+            d.rounded_rectangle((x + 8, y + top - 3, x + 232, y + 234), radius=8, fill=background)
+        for i, line in enumerate(lines):
+            d.text((x + 120, y + top + height * (i + .5)), line,
+                   font=self.font(size), fill=color, anchor="mm")
+        return top
+
     def tile(self, canvas, button, title, lines=(), accent=BLUE, footer="", selected=False):
         x, y = self.origin(button)
         d = ImageDraw.Draw(canvas)
         d.rounded_rectangle((x + 6, y + 6, x + 234, y + 234), radius=15,
                             fill="#FFFFFF" if selected else BG, outline=accent if selected else "#D7D4D0", width=3)
         self.text(d, (x + 120, y + 44), title, 31, accent)
+        body_bottom = 190 if not footer else 230 - len(self.footer_lines(footer)) * 38 - 10
         for i, line in enumerate(lines):
-            self.text(d, (x + 120, y + 98 + i * 30), line, 23)
+            cy = 80 + (body_bottom - 80) * (i + .5) / len(lines)
+            self.text(d, (x + 120, y + cy), line, 23)
         if footer:
-            self.text(d, (x + 120, y + 207), footer, 17, "#74787D")
+            self.footer(canvas, button, footer, color="#74787D")
 
     def strip(self, canvas, button, text, color=INK):
-        x, y = self.origin(button)
-        d = ImageDraw.Draw(canvas)
-        d.rounded_rectangle((x + 8, y + 205, x + 232, y + 234), radius=8, fill=BG)
-        self.text(d, (x + 120, y + 219), text, 17, color)
+        self.footer(canvas, button, text, color=color, background=BG)
 
     def piece_text(self, canvas, xy, mark, theme, text, size=26, color=INK, prefix="", max_width=212, icon_size=None):
         """Center a text line with a transparent piece as an inline player label."""
@@ -216,6 +249,14 @@ class Renderer:
         icon = ImageOps.contain(self.icons[theme, "o" if mark == 1 else "x"], (size, size), Image.Resampling.LANCZOS)
         canvas.paste(icon, (x + (240 - icon.width) // 2, y + 38), icon)
 
+    @staticmethod
+    def game_piece_size(app, button):
+        if button == 5:
+            return 130
+        if button == 9 and (app.game.mode.clear_every or app.game.mode.blind):
+            return 100  # Reserve two full-size guidance lines below the piece.
+        return 150
+
     def motion_view(self, app):
         """Board, lifetimes and sliding pieces for the current animation frame.
 
@@ -258,7 +299,7 @@ class Renderer:
                 streak = "#B8C6FF" if mark == 1 else "#F6B9DF"
                 for dx in (-40, 0, 40):
                     d.line((x + 120 + dx, max(y0 + 40, y - 30), x + 120 + dx, y + 40), fill=streak, width=6)
-            self.mark(canvas, x, y, mark, app.profile.data["theme"], size=130 if b == 4 else 150)
+            self.mark(canvas, x, y, mark, app.profile.data["theme"], size=self.game_piece_size(app, b + 1))
 
     def game(self, canvas, app, reveal=False):
         game = app.game
@@ -279,7 +320,7 @@ class Renderer:
                 # A vanished piece blurs and fades out over five frames.
                 t = app.fade_step / 5
                 ghost = Image.new("RGB", (240, 240), BG)
-                self.mark(ghost, 0, 0, app.fade[1], app.profile.data["theme"], size=130 if button == 5 else 150)
+                self.mark(ghost, 0, 0, app.fade[1], app.profile.data["theme"], size=self.game_piece_size(app, button))
                 ghost = ghost.filter(ImageFilter.GaussianBlur(2 + 10 * t))
                 ghost = Image.blend(ghost, Image.new("RGB", (240, 240), BG), t)
                 canvas.paste(ghost.crop((20, 36, 220, 196)), (x + 20, y + 36))
@@ -292,13 +333,13 @@ class Renderer:
                 if animation is not None and animation["phase"] == "switching":
                     progress = animation["progress"]
                     icon = self.icons[app.profile.data["theme"], "o" if (mark if progress < 0.5 else -mark) == 1 else "x"]
-                    if button == 5:
-                        icon = ImageOps.contain(icon, (130, 130), Image.Resampling.LANCZOS)
+                    size = self.game_piece_size(app, button)
+                    icon = ImageOps.contain(icon, (size, size), Image.Resampling.LANCZOS)
                     width = max(1, round(icon.width * abs(1 - 2 * progress)))
                     icon = icon.resize((width, icon.height), Image.Resampling.LANCZOS)
                     canvas.paste(icon, (x + (240 - width) // 2, y + 38), icon)
                 else:
-                    self.mark(canvas, x, y, mark, app.profile.data["theme"], size=130 if button == 5 else 150)
+                    self.mark(canvas, x, y, mark, app.profile.data["theme"], size=self.game_piece_size(app, button))
                 if app.settings["show_lifetime"] and action in lives:
                     self.text(d, (x + 29, y + 25), str(lives[action]), 23, PINK if lives[action] == 1 else BLUE)
             elif not mark and not hidden and action == game.last_action:
@@ -319,13 +360,13 @@ class Renderer:
                     else:
                         status = ("AI 차례" if app.is_ai_turn() else "내 차례") if app.settings["opponent"] == "ai" else "차례"
                     self.piece_text(canvas, (x + 120, y + 201), game.turn, app.profile.data["theme"], status, 19, icon_size=48)
-                self.text(d, (x + 120, y + 231), "5 길게: 일시정지", 12, "#76716D")
+                self.footer(canvas, button, "5 길게: 일시정지", 24, "#76716D", bottom=238)
             elif button == 1:
-                self.text(d, (x + 120, y + 219), game.mode.title, 16, "#76716D")
+                self.footer(canvas, button, game.mode.title, 32, "#76716D")
             elif button == 9 and game.mode.clear_every and not game.done:
                 left = game.mode.clear_every - game.moves % game.mode.clear_every
-                self.text(d, (x + 120, y + 216), f"아래줄 삭제까지 {left}수", 20, countdown_color(left, game.mode.clear_every))
+                self.footer(canvas, button, f"아래줄 삭제까지 {left}수", 40, countdown_color(left, game.mode.clear_every))
             elif button == 9 and hidden:
-                self.text(d, (x + 120, y + 219), "방금 둔 말 공개 중" if app.blind_visible else "기억하세요", 16, "#76716D")
+                self.footer(canvas, button, "방금 둔 말 공개 중" if app.blind_visible else "기억하세요", 32, "#76716D")
         if not hidden:
             self.draw_movers(canvas, app, movers)

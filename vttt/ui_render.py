@@ -16,6 +16,21 @@ def image_tile(renderer, canvas, button, name, selected=False):
         ImageDraw.Draw(canvas).rectangle((x+3, y+3, x+236, y+236), outline='#5579FF', width=5)
 
 
+def rps_prompt(renderer, canvas):
+    """Share the center LCD prompt across AI, local and network RPS."""
+    if 'rps_prompt' in renderer.art:
+        image_tile(renderer, canvas, 5, 'rps_prompt')
+        return
+    # Keep the selection screen usable until the supplied artwork is installed.
+    x, y = renderer.origin(5)
+    d = ImageDraw.Draw(canvas)
+    d.rectangle((x, y, x + 239, y + 239), fill=BG)
+    for cy, text, size, color in ((32, '가위 바위 보!', 31, '#F4C82D'),
+                                  (125, '골라!', 78, '#FF3033')):
+        d.text((x + 120, y + cy), text, font=renderer.font(size), fill=color,
+               anchor='mm', stroke_width=3, stroke_fill='white')
+
+
 def draw_grid(canvas):
     d = ImageDraw.Draw(canvas)
     for edge in (240, 480):
@@ -37,8 +52,8 @@ def draw_scores(r, canvas, app):
         d.rectangle((x, y, x + 239, y + 239), fill=background)
         r.text(d, (x + 120, y + 39), title, 29, '#45494C')
         d.line((x + 28, y + 74, x + 212, y + 74), fill='#D9D3CC', width=2)
-        r.text(d, (x + 120, y + 132), value, 76, color, max_width=198)
-        r.text(d, (x + 120, y + 201), footer, 20, '#5B5B5B')
+        r.text(d, (x + 120, y + 106), value, 64, color, max_width=198)
+        r.footer(canvas, button, footer, 40, '#5B5B5B')
 
     network = app.score_network
     wins, losses, draws = (stats.get('lan_' + key, 0) if network else stats[key]
@@ -93,8 +108,8 @@ def draw_help(r, canvas, app):
     r.text(d, (360, 153), '게임 규칙' if rule else '기본 조작', 30, '#FFCC25')
     r.text(d, (600, 36), '승리 목표', 28)
     r.text(d, (600, 105), '3', 88, '#24764B')
-    r.text(d, (600, 174), '가로 / 세로 / 대각선', 20)
-    r.text(d, (600, 207), '세 칸을 이으세요', 23)
+    r.text(d, (600, 145), '가로 / 세로 / 대각선', 20)
+    r.footer(canvas, 3, '세 칸을 이으세요', 46)
 
     pieces = ('말 개수', ('한 사람당', '말은 3개'))
     pages = {
@@ -137,7 +152,7 @@ def draw_help(r, canvas, app):
                                (9, 'shop/shop_right_button', '다음 설명')):
         image_tile(r, canvas, button, art)
         x, y = r.origin(button)
-        r.text(d, (x + 120, y + 213), title, 26)
+        r.footer(canvas, button, title, 52, background=BG)
     r.text(d, (360, 524), '게임 설명', 29)
     r.text(d, (360, 610), f'{index + 1} / {len(MODES) + 1}', 52, '#3156C4')
     for page in range(len(MODES) + 1):
@@ -219,14 +234,14 @@ def draw_setup(r, canvas, app):
 def draw_rps(r, canvas, app):
     image_tile(r, canvas, 1, 'go_back_button')
     image_tile(r, canvas, 2, ('sissor_button', 'rock_button', 'paper_button')[app.rps_spin if app.rps_choice is None else app.rps_choice])
-    for b, name in ((4, 'sissor_text'), (5, 'rock_text'), (6, 'paper_text'),
-                    (7, 'sissor_button'), (8, 'rock_button'), (9, 'paper_button')):
+    rps_prompt(r, canvas)
+    for b, name in ((7, 'sissor_button'), (8, 'rock_button'), (9, 'paper_button')):
         image_tile(r, canvas, b, name)
     if app.screen == 'rps_result':
         r.strip(canvas, 2, '')
-        r.piece_text(canvas, (360, 219), 1, app.profile.data['theme'],
+        r.piece_text(canvas, (360, 211), 1, app.profile.data['theme'],
                      '선공' if app.settings['opponent'] == 'local' else
-                     '내가 먼저 둬요' if app.rps_human_first else 'AI가 먼저 둬요', 17)
+                     '내가 먼저 둬요' if app.rps_human_first else 'AI가 먼저 둬요', 34)
     elif app.notice:
         r.strip(canvas, 2, app.notice)
 
@@ -252,11 +267,13 @@ def draw_duel(r, canvas, app):
         r.text(d, (x + 120, y + 155), '아래쪽 선공' if app.rps_human_first else '위쪽 선공', 23)
     elif app.duel_phase < 0:
         r.text(d, (x + 120, y + 120), app.notice or '준비', 30)
+    elif app.duel_phase == 3:
+        rps_prompt(r, canvas)
     else:
         r.text(d, (x + 120, y + 112), ('3', '2', '1', '눌러!', '')[app.duel_phase],
                110 if app.duel_phase < 3 else 64, '#E5383B' if app.duel_phase == 3 else '#45494C')
-    r.tile(canvas, 6, '가위바위보', ('위쪽 플레이어', '아래쪽 플레이어', '눌러! 때 1초 안에')
-           if app.screen != 'duel_result' else ('', '', '눌러! 때 1초 안에'))
+    r.tile(canvas, 6, '가위바위보', ('위쪽 플레이어', '아래쪽 플레이어', '골라! 때 1초 안에')
+           if app.screen != 'duel_result' else ('', '', '골라! 때 1초 안에'))
     if app.screen == 'duel_result':
         bottom_mark = 1 if app.rps_human_first else -1
         for cy, mark, prefix in ((338, -bottom_mark, '위: '), (368, bottom_mark, '아래: ')):

@@ -31,6 +31,27 @@ class PieceRenderingTests(unittest.TestCase):
         self.app.close()
         self.temp.cleanup()
 
+    def test_large_footer_wraps_without_clipping_into_neighbor_displays(self):
+        from PIL import ImageChops, ImageDraw
+        for text, size in (('상대 입장을 기다립니다', 34),
+                           ('--online-server로 서버 주소를 설정하세요', 34),
+                           ('아래줄 삭제까지 3수', 40), ('다음 설명', 52)):
+            with self.subTest(text=text):
+                lines = self.renderer.footer_lines(text, size)
+                self.assertEqual(''.join(lines).replace(' ', ''), text.replace(' ', ''))
+                self.assertTrue(all(self.renderer.font(size).getlength(line) <= 212 for line in lines))
+                canvas = Image.new('RGB', (720, 720), 'white')
+                with patch.object(ImageDraw.ImageDraw, 'text', autospec=True,
+                                  side_effect=ImageDraw.ImageDraw.text) as draw_text:
+                    self.renderer.footer(canvas, 5, text, size)
+                self.assertTrue(all(call.kwargs['font'].size == size for call in draw_text.call_args_list))
+                bounds = ImageChops.difference(canvas, Image.new('RGB', canvas.size, 'white')).getbbox()
+                self.assertIsNotNone(bounds)
+                self.assertGreaterEqual(bounds[0], 248)
+                self.assertGreaterEqual(bounds[1], 240)
+                self.assertLessEqual(bounds[2], 472)
+                self.assertLessEqual(bounds[3], 474)
+
     def test_all_twelve_pieces_have_transparent_backgrounds(self):
         for theme in THEMES:
             for mark in ("o", "x"):

@@ -64,7 +64,8 @@ def draw_lan(r, canvas, app):
             image_tile(r, canvas, 5, hands[lan.my_pick])
             r.strip(canvas, 5, '내 선택')
         else:
-            r.tile(canvas, 5, '내 선택', ('아래 버튼에서', '가위 / 바위 / 보'))
+            from .ui_render import rps_prompt
+            rps_prompt(r, canvas)
         if lan.phase == 'rps_tie':
             r.tile(canvas, 6, '무승부', ('잠시 후 다시 선택',))
         elif lan.phase == 'rps_result':
@@ -83,10 +84,9 @@ def draw_reconnect(r, canvas, app):
     d = ImageDraw.Draw(canvas)
     d.rounded_rectangle((248, 250, 472, 470), radius=16, fill='#F7F3EF', outline='#E5383B', width=4)
     r.text(d, (360, 290), '통신 연결 끊김', 25, '#B73159')
-    r.text(d, (360, 335), '상대 연결을 확인 중', 20)
-    r.text(d, (360, 381), '재연결 중' + '.' * (int(app.clock() * 2) % 4), 27, '#3156C4')
-    r.text(d, (360, 420), '복구되면 이어서 진행해요', 17)
-    r.text(d, (360, 448), '1번: 메뉴로 돌아가기', 17)
+    r.text(d, (360, 325), '상대 연결을 확인 중', 20)
+    r.text(d, (360, 365), '재연결 중' + '.' * (int(app.clock() * 2) % 4), 27, '#3156C4')
+    r.footer(canvas, 5, '복구되면 이어서 진행해요')
     # Draw the complete first LCD after dimming, so the exit stays fully visible.
     canvas.paste(BG, (0, 0, 240, 240))
     r.tile(canvas, 1, '메뉴로 돌아가기', ('현재 연결을 종료합니다',), footer='1번을 눌러 이동')
