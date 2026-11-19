@@ -137,7 +137,8 @@ def draw_help(r, canvas, app):
     }
     cards = pages[rule.key] if rule else (
         ('말 놓기', ('원하는 칸을', '한 번 눌렀다 떼세요')),
-        ('일시정지', ('가운데 5번 버튼을', '1.3초 길게 누르세요')),
+        ('일시정지', ('가운데 5번 버튼을',
+                      f"{getattr(app.backend, 'long_seconds', getattr(getattr(app.backend, 'button_filter', None), 'long_press', 2.5)):g}초 길게 누르세요")),
         ('말 수명', ('1: 다음 내 착수에', '사라지는 말입니다', '2와 3은 더 유지돼요')))
     for number, ((title, lines), color) in enumerate(zip(cards, ('#3156C4', '#946100', '#24764B')), 1):
         x, y = r.origin(number + 3)

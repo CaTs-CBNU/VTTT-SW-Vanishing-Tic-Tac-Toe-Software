@@ -12,6 +12,6 @@
   "y_offset": 80,
   "baudrate": 6400000,
   "debounce_ms": 40,
-  "long_press_ms": 3000,
+  "long_press_ms": 2500,
   "poll_ms": 10
 }
