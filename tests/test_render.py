@@ -31,6 +31,19 @@ class PieceRenderingTests(unittest.TestCase):
         self.app.close()
         self.temp.cleanup()
 
+    def test_shop_border_follows_selected_theme_after_scrolling(self):
+        from vttt.buttons import ButtonEvent
+        self.app.go('shop')
+        self.app.shop_page = 0
+        self.app.handle(ButtonEvent(5, 'short'))
+        selected = self.app.shop_selected
+        for button, selected_display in ((9, 4), (7, 5)):
+            self.app.handle(ButtonEvent(button, 'short'))
+            image = self.renderer.draw(self.app)
+            x, y = self.renderer.origin(selected_display)
+            self.assertEqual(image.getpixel((x + 20, y + 10)), (241, 199, 47))
+            self.assertEqual(self.app.shop_selected, selected)
+
     def test_pause_exit_and_difficulty_clear_displays_are_blank(self):
         from vttt.render import BG
         for screen, buttons in (('pause', (8,)), ('setup', (3, 7))):

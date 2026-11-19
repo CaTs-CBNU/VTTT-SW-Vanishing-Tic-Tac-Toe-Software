@@ -366,7 +366,6 @@ class Application:
             elif button in (7, 9):
                 pages = len(SHOP_THEMES)
                 self.shop_page = (self.shop_page + (-1 if button == 7 else 1)) % pages
-                self.shop_selected = None
                 self.touch()
             elif button in (4, 5, 6):
                 index = (self.shop_page + button - 4) % len(SHOP_THEMES)

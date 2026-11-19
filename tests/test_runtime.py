@@ -334,6 +334,18 @@ class AppTests(unittest.TestCase):
     def press(self, button, kind="short"):
         self.app.handle(ButtonEvent(button, kind))
 
+    def test_shop_selection_survives_scrolling_in_both_directions(self):
+        from vttt.ui_render import SHOP_THEMES
+        for screen in ('shop', 'themes'):
+            self.app.go(screen)
+            self.app.shop_page = 0
+            self.press(5)
+            selected = SHOP_THEMES[1]
+            for button in (9, 9, 9, 7, 7, 7):
+                self.press(button)
+                self.assertEqual(self.app.shop_selected, selected)
+            self.assertEqual(self.app.shop_page, 0)
+
     def test_removed_pause_exit_and_difficulty_clear_do_nothing(self):
         self.app.go('pause')
         self.press(8)
